@@ -13,29 +13,33 @@ st.set_page_config(page_title="Cartoon Video Generator", layout="centered")
 def get_transform_function(style_name):
     if style_name == "🌸 Soft Pastel Anime-Like Style":
         def pastel_style(frame):
+            # Enhance colors and brightness
             r, g, b = frame[:, :, 0], frame[:, :, 1], frame[:, :, 2]
-            r = np.clip(r * 1.08 + 20, 0, 255)
-            g = np.clip(g * 1.06 + 15, 0, 255)
-            b = np.clip(b * 1.15 + 25, 0, 255)
-            blurred = (frame.astype(np.float32) * 0.4 +
-                       cv2.GaussianBlur(frame, (7, 7), 0).astype(np.float32) * 0.6)
-            tint = np.array([10, -5, 15], dtype=np.float32)
-            result = np.clip(blurred + tint, 0, 255).astype(np.uint8)
+            r = np.clip(r * 1.2 + 30, 0, 255)
+            g = np.clip(g * 1.15 + 20, 0, 255)
+            b = np.clip(b * 1.25 + 35, 0, 255)
+
+            # Apply dreamy blur
+            blurred = cv2.GaussianBlur(frame, (11, 11), 0).astype(np.float32)
+            blended = (frame.astype(np.float32) * 0.3 + blurred * 0.7)
+
+            # Soft pink-violet tint
+            tint = np.array([15, -10, 20], dtype=np.float32)
+            result = np.clip(blended + tint, 0, 255).astype(np.uint8)
             return result
         return pastel_style
 
     elif style_name == "🎮 Cinematic Warm Filter":
         def warm_style(frame):
             r, g, b = frame[:, :, 0], frame[:, :, 1], frame[:, :, 2]
-            r = np.clip(r * 1.25 + 30, 0, 255)  # boost reds
-            g = np.clip(g * 1.15 + 15, 0, 255)  # enhance greens
-            b = np.clip(b * 0.85, 0, 255)       # reduce blues
+            r = np.clip(r * 1.25 + 30, 0, 255)
+            g = np.clip(g * 1.15 + 15, 0, 255)
+            b = np.clip(b * 0.85, 0, 255)
 
+            # Stronger grain effect, no vignette
             result = np.stack([r, g, b], axis=2).astype(np.float32)
             grain = np.random.normal(0, 6, frame.shape).astype(np.float32)
-
             return np.clip(result + grain, 0, 255).astype(np.uint8)
-
         return warm_style
 
     return lambda frame: frame
