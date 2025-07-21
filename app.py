@@ -26,18 +26,25 @@ def get_transform_function(style_name):
 
     elif style_name == "🎮 Cinematic Warm Filter":
         def warm_style(frame):
-            r, g, b = frame[:, :, 0], frame[:, :, 1], frame[:, :, 2]
-            r = np.clip(r * 1.15 + 15, 0, 255)
-            g = np.clip(g * 1.08 + 8, 0, 255)
-            b = np.clip(b * 0.95, 0, 255)
-            rows, cols = r.shape
-            Y, X = np.ogrid[:rows, :cols]
-            center = (rows / 2, cols / 2)
-            vignette = 1 - ((X - center[1])**2 + (Y - center[0])**2) / (1.5 * center[0] * center[1])
-            vignette = np.clip(vignette, 0.3, 1)[..., np.newaxis]
-            result = np.stack([r, g, b], axis=2).astype(np.float32) * vignette
-            grain = np.random.normal(0, 3, frame.shape).astype(np.float32)
-            return np.clip(result + grain, 0, 255).astype(np.uint8)
+    r, g, b = frame[:, :, 0], frame[:, :, 1], frame[:, :, 2]
+    r = np.clip(r * 1.25 + 30, 0, 255)  # boost reds
+    g = np.clip(g * 1.15 + 15, 0, 255)  # enhance greens
+    b = np.clip(b * 0.85, 0, 255)       # reduce blues
+
+    # Vignette effect (stronger)
+    rows, cols = r.shape
+    Y, X = np.ogrid[:rows, :cols]
+    center = (rows / 2, cols / 2)
+    vignette = 1 - ((X - center[1])**2 + (Y - center[0])**2) / (center[0] * center[1])
+    vignette = np.clip(vignette, 0.2, 1)[..., np.newaxis]
+
+    # Apply vignette
+    result = np.stack([r, g, b], axis=2).astype(np.float32) * vignette
+
+    # Stronger grain effect
+    grain = np.random.normal(0, 6, frame.shape).astype(np.float32)
+
+    return np.clip(result + grain, 0, 255).astype(np.uint8)
         return warm_style
 
     return lambda frame: frame
