@@ -31,17 +31,7 @@ def get_transform_function(style_name):
             g = np.clip(g * 1.15 + 15, 0, 255)  # enhance greens
             b = np.clip(b * 0.85, 0, 255)       # reduce blues
 
-            # Vignette effect (stronger)
-            rows, cols = r.shape
-            Y, X = np.ogrid[:rows, :cols]
-            center = (rows / 2, cols / 2)
-            vignette = 1 - ((X - center[1])**2 + (Y - center[0])**2) / (center[0] * center[1])
-            vignette = np.clip(vignette, 0.2, 1)[..., np.newaxis]
-
-            # Apply vignette
-            result = np.stack([r, g, b], axis=2).astype(np.float32) * vignette
-
-            # Stronger grain effect
+            result = np.stack([r, g, b], axis=2).astype(np.float32)
             grain = np.random.normal(0, 6, frame.shape).astype(np.float32)
 
             return np.clip(result + grain, 0, 255).astype(np.uint8)
