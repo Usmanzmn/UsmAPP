@@ -1,9 +1,9 @@
 import streamlit as st
 import cv2
 import os
-import tempfile
 import time
 import shutil
+import tempfile
 from moviepy.editor import VideoFileClip
 import numpy as np
 
@@ -26,25 +26,26 @@ def get_transform_function(style_name):
 
     elif style_name == "🎮 Cinematic Warm Filter":
         def warm_style(frame):
-    r, g, b = frame[:, :, 0], frame[:, :, 1], frame[:, :, 2]
-    r = np.clip(r * 1.25 + 30, 0, 255)  # boost reds
-    g = np.clip(g * 1.15 + 15, 0, 255)  # enhance greens
-    b = np.clip(b * 0.85, 0, 255)       # reduce blues
+            r, g, b = frame[:, :, 0], frame[:, :, 1], frame[:, :, 2]
+            r = np.clip(r * 1.25 + 30, 0, 255)  # boost reds
+            g = np.clip(g * 1.15 + 15, 0, 255)  # enhance greens
+            b = np.clip(b * 0.85, 0, 255)       # reduce blues
 
-    # Vignette effect (stronger)
-    rows, cols = r.shape
-    Y, X = np.ogrid[:rows, :cols]
-    center = (rows / 2, cols / 2)
-    vignette = 1 - ((X - center[1])**2 + (Y - center[0])**2) / (center[0] * center[1])
-    vignette = np.clip(vignette, 0.2, 1)[..., np.newaxis]
+            # Vignette effect (stronger)
+            rows, cols = r.shape
+            Y, X = np.ogrid[:rows, :cols]
+            center = (rows / 2, cols / 2)
+            vignette = 1 - ((X - center[1])**2 + (Y - center[0])**2) / (center[0] * center[1])
+            vignette = np.clip(vignette, 0.2, 1)[..., np.newaxis]
 
-    # Apply vignette
-    result = np.stack([r, g, b], axis=2).astype(np.float32) * vignette
+            # Apply vignette
+            result = np.stack([r, g, b], axis=2).astype(np.float32) * vignette
 
-    # Stronger grain effect
-    grain = np.random.normal(0, 6, frame.shape).astype(np.float32)
+            # Stronger grain effect
+            grain = np.random.normal(0, 6, frame.shape).astype(np.float32)
 
-    return np.clip(result + grain, 0, 255).astype(np.uint8)
+            return np.clip(result + grain, 0, 255).astype(np.uint8)
+
         return warm_style
 
     return lambda frame: frame
@@ -56,7 +57,7 @@ st.header("🎨 Apply Style to Single Video")
 uploaded_file = st.file_uploader("📤 Upload a Video", type=["mp4"], key="style_upload")
 style = st.selectbox(
     "🎨 Choose a Style",
-    ["None", "🌸 Soft Pastel Anime-Like Style", "🎞️ Cinematic Warm Filter"],
+    ["None", "🌸 Soft Pastel Anime-Like Style", "🎮 Cinematic Warm Filter"],
     key="style_select"
 )
 generate = st.button("🌸 Generate Styled Video")
@@ -73,18 +74,22 @@ if uploaded_file and generate:
         clip = VideoFileClip(input_path)
         transform_fn = get_transform_function(style)
 
-        # Apply transformation to each frame
-        styled_clip = clip.fl_image(transform_fn)
+        styled_path = os.path.join(tmpdir, "styled.mp4")
 
-        # Save final video
-        styled_final_path = os.path.join(tmpdir, "styled_output.mp4")
-        styled_clip.write_videofile(styled_final_path, codec="libx264", audio_codec="aac")
+        def process_frame(get_frame, t):
+            frame = get_frame(t)
+            frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+            styled = transform_fn(frame)
+            return cv2.cvtColor(styled, cv2.COLOR_BGR2RGB)
+
+        styled_clip = clip.fl(process_frame)
+        styled_clip.write_videofile(styled_path, codec="libx264", audio_codec="aac")
 
         # Generate previews (scaled to height 360)
         preview_original_temp = os.path.join(tmpdir, "original_preview.mp4")
         preview_styled_temp = os.path.join(tmpdir, "styled_preview.mp4")
         clip.resize(height=360).write_videofile(preview_original_temp, codec="libx264", audio_codec="aac")
-        VideoFileClip(styled_final_path).resize(height=360).write_videofile(preview_styled_temp, codec="libx264", audio_codec="aac")
+        VideoFileClip(styled_path).resize(height=360).write_videofile(preview_styled_temp, codec="libx264", audio_codec="aac")
 
         # Save files to persistent directory
         orig_final = os.path.join(output_dir, "original.mp4")
@@ -93,7 +98,7 @@ if uploaded_file and generate:
         preview_styled_final = os.path.join(output_dir, "styled_preview.mp4")
 
         shutil.copy(input_path, orig_final)
-        shutil.copy(styled_final_path, styled_final)
+        shutil.copy(styled_path, styled_final)
         shutil.copy(preview_original_temp, preview_orig_final)
         shutil.copy(preview_styled_temp, preview_styled_final)
 
