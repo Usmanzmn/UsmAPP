@@ -2,6 +2,8 @@ import streamlit as st
 import cv2
 import os
 import tempfile
+import time
+import shutil
 from moviepy.editor import VideoFileClip
 import numpy as np
 
@@ -39,7 +41,8 @@ def get_transform_function(style_name):
         return warm_style
 
     return lambda frame: frame
-    # ========== FEATURE 1 ==========
+
+# ========== FEATURE 1 ==========
 st.markdown("---")
 st.header("🎨 Apply Style to Single Video")
 
@@ -63,12 +66,20 @@ if uploaded_file and generate:
         clip = VideoFileClip(input_path)
         transform_fn = get_transform_function(style)
 
-# Generate previews (scaled to height 360)
+        # Apply transformation to each frame
+        styled_clip = clip.fl_image(transform_fn)
+
+        # Save final video
+        styled_final_path = os.path.join(tmpdir, "styled_output.mp4")
+        styled_clip.write_videofile(styled_final_path, codec="libx264", audio_codec="aac")
+
+        # Generate previews (scaled to height 360)
         preview_original_temp = os.path.join(tmpdir, "original_preview.mp4")
         preview_styled_temp = os.path.join(tmpdir, "styled_preview.mp4")
         clip.resize(height=360).write_videofile(preview_original_temp, codec="libx264", audio_codec="aac")
         VideoFileClip(styled_final_path).resize(height=360).write_videofile(preview_styled_temp, codec="libx264", audio_codec="aac")
-  # Save files to persistent directory
+
+        # Save files to persistent directory
         orig_final = os.path.join(output_dir, "original.mp4")
         styled_final = os.path.join(output_dir, "styled.mp4")
         preview_orig_final = os.path.join(output_dir, "original_preview.mp4")
