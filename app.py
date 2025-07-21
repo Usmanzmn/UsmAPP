@@ -7,31 +7,6 @@ import numpy as np
 
 st.set_page_config(page_title="Cartoon Video Generator", layout="centered")
 
-# ---------- Custom Style ----------
-st.markdown(
-    """
-    <style>
-    .centered-title {
-        text-align: center;
-        font-size: 2.5em;
-        font-weight: bold;
-        margin-top: 0.5em;
-        margin-bottom: 0.5em;
-        color: #4A90E2;
-    }
-    .upload-box {
-        background-color: #f0f2f6;
-        padding: 1em;
-        border-radius: 10px;
-        margin-top: 1em;
-    }
-    </style>
-    """, unsafe_allow_html=True
-)
-
-st.markdown('<div class="centered-title">🎨 Cartoon Video Generator</div>', unsafe_allow_html=True)
-st.markdown("Upload a video and turn it into a cartoon-style animation using OpenCV.", unsafe_allow_html=True)
-
 # ---------- Style Filter Functions ----------
 def get_transform_function(style_name):
     if style_name == "🌸 Soft Pastel Anime-Like Style":
@@ -64,72 +39,66 @@ def get_transform_function(style_name):
         return warm_style
 
     return lambda frame: frame
+    # ========== FEATURE 1 ==========
+st.markdown("---")
+st.header("🎨 Apply Style to Single Video")
 
-# ---------- Cartoonizer ----------
-def cartoonize_frame(frame):
-    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-    gray = cv2.medianBlur(gray, 5)
-    edges = cv2.adaptiveThreshold(
-        gray, 255,
-        cv2.ADAPTIVE_THRESH_MEAN_C,
-        cv2.THRESH_BINARY, 9, 9
-    )
-    color = cv2.bilateralFilter(frame, 9, 250, 250)
-    cartoon = cv2.bitwise_and(color, color, mask=edges)
-    return cartoon
+uploaded_file = st.file_uploader("📤 Upload a Video", type=["mp4"], key="style_upload")
+style = st.selectbox(
+    "🎨 Choose a Style",
+    ["None", "🌸 Soft Pastel Anime-Like Style", "🎞️ Cinematic Warm Filter"],
+    key="style_select"
+)
+generate = st.button("🌸 Generate Styled Video")
+output_dir = "processed_videos"
+os.makedirs(output_dir, exist_ok=True)
 
-def process_cartoon_video(input_path, output_path, style_name):
-    clip = VideoFileClip(input_path)
-    fps = clip.fps
-    width, height = clip.size
-    temp_dir = tempfile.mkdtemp()
+if uploaded_file and generate:
+    start_time = time.time()
+    with tempfile.TemporaryDirectory() as tmpdir:
+        input_path = os.path.join(tmpdir, "input.mp4")
+        with open(input_path, "wb") as f:
+            f.write(uploaded_file.read())
 
-    transform = get_transform_function(style_name)
-    frames = []
-    for frame in clip.iter_frames():
-        frame_bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-        styled = transform(frame_bgr)
-        cartoon = cartoonize_frame(styled)
-        cartoon_rgb = cv2.cvtColor(cartoon, cv2.COLOR_BGR2RGB)
-        frames.append(cartoon_rgb)
+        clip = VideoFileClip(input_path)
+        transform_fn = get_transform_function(style)
 
-    output_temp = os.path.join(temp_dir, "cartoon_output.mp4")
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    out = cv2.VideoWriter(output_temp, fourcc, fps, (width, height))
+# Generate previews (scaled to height 360)
+        preview_original_temp = os.path.join(tmpdir, "original_preview.mp4")
+        preview_styled_temp = os.path.join(tmpdir, "styled_preview.mp4")
+        clip.resize(height=360).write_videofile(preview_original_temp, codec="libx264", audio_codec="aac")
+        VideoFileClip(styled_final_path).resize(height=360).write_videofile(preview_styled_temp, codec="libx264", audio_codec="aac")
+  # Save files to persistent directory
+        orig_final = os.path.join(output_dir, "original.mp4")
+        styled_final = os.path.join(output_dir, "styled.mp4")
+        preview_orig_final = os.path.join(output_dir, "original_preview.mp4")
+        preview_styled_final = os.path.join(output_dir, "styled_preview.mp4")
 
-    for f in frames:
-        out.write(f)
-    out.release()
+        shutil.copy(input_path, orig_final)
+        shutil.copy(styled_final_path, styled_final)
+        shutil.copy(preview_original_temp, preview_orig_final)
+        shutil.copy(preview_styled_temp, preview_styled_final)
 
-    final = VideoFileClip(output_temp).set_audio(clip.audio)
-    final.write_videofile(output_path, codec="libx264", audio_codec="aac")
+        # Save in session
+        st.session_state["styled_output_path"] = styled_final
+        st.session_state["original_path"] = orig_final
+        st.session_state["preview_original"] = preview_orig_final
+        st.session_state["preview_styled"] = preview_styled_final
+        st.session_state["process_time"] = time.time() - start_time
 
-    return output_path
+# Display result
+if "styled_output_path" in st.session_state:
+    col1, col2 = st.columns(2)
+    with col1:
+        st.subheader("🔹 Original")
+        st.video(st.session_state["preview_original"])
+        with open(st.session_state["original_path"], "rb") as f:
+            st.download_button("⬇️ Download Original", f.read(), file_name="original.mp4")
 
-# ---------- UI ----------
-st.markdown('<div class="upload-box">', unsafe_allow_html=True)
-uploaded_file = st.file_uploader("📤 Upload a video file", type=["mp4", "mov", "avi"])
-style_option = st.selectbox("🎨 Choose a style filter", [
-    "No Filter",
-    "🌸 Soft Pastel Anime-Like Style",
-    "🎮 Cinematic Warm Filter"
-])
-st.markdown('</div>', unsafe_allow_html=True)
+    with col2:
+        st.subheader("🔸 Styled")
+        st.video(st.session_state["preview_styled"])
+        with open(st.session_state["styled_output_path"], "rb") as f:
+            st.download_button("⬇️ Download Styled", f.read(), file_name="styled.mp4")
 
-if uploaded_file:
-    generate = st.button("✨ Generate Cartoon Video")
-    if generate:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp_input:
-            tmp_input.write(uploaded_file.read())
-            input_path = tmp_input.name
-
-        output_path = os.path.join("processed_videos", "cartoonized_output.mp4")
-        os.makedirs("processed_videos", exist_ok=True)
-
-        with st.spinner("🎬 Processing... please wait!"):
-            final_path = process_cartoon_video(input_path, output_path, style_option)
-
-        st.success("✅ Cartoon video is ready!")
-        st.video(final_path)
-        with open(final_path, "rb") as f:
-            st.download_button("⬇️ Download Cartoon Video", f, file_name="cartoonized_output.mp4")
+    st.success(f"✅ Done in {st.session_state['process_time']:.2f} sec")
