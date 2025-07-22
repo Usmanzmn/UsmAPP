@@ -15,26 +15,26 @@ st.title("🎨 AI Video Effects App")
 
 @st.cache_resource
 def get_transform_function(style_name):
-    elif style_name == "🌸 Soft Pastel Anime-Like Style":
-    def pastel_style(frame):
-        frame = frame.astype(np.float32)
-        
-        # Pastel color boost
-        frame[:, :, 0] = np.clip(frame[:, :, 0] * 1.3 + 30, 0, 255)  # R
-        frame[:, :, 1] = np.clip(frame[:, :, 1] * 1.15 + 20, 0, 255) # G
-        frame[:, :, 2] = np.clip(frame[:, :, 2] * 1.25 + 25, 0, 255) # B
+    if style_name == "🌸 Soft Pastel Anime-Like Style":
+        def pastel_style(frame):
+            frame = frame.astype(np.float32)
 
-        # Contrast and brightness enhancement
-        frame = np.clip(frame * 1.1 + 10, 0, 255)
+            # Pastel color boost
+            frame[:, :, 0] = np.clip(frame[:, :, 0] * 1.3 + 30, 0, 255)  # R
+            frame[:, :, 1] = np.clip(frame[:, :, 1] * 1.15 + 20, 0, 255) # G
+            frame[:, :, 2] = np.clip(frame[:, :, 2] * 1.25 + 25, 0, 255) # B
 
-        # Slight sharpening
-        kernel = np.array([[0, -1, 0],
-                           [-1, 5.4, -1],
-                           [0, -1, 0]])
-        frame = cv2.filter2D(frame, -1, kernel)
+            # Contrast and brightness enhancement
+            frame = np.clip(frame * 1.1 + 10, 0, 255)
 
-        return np.clip(frame, 0, 255).astype(np.uint8)
-    return pastel_style
+            # Slight sharpening
+            kernel = np.array([[0, -1, 0],
+                               [-1, 5.4, -1],
+                               [0, -1, 0]])
+            frame = cv2.filter2D(frame, -1, kernel)
+
+            return np.clip(frame, 0, 255).astype(np.uint8)
+        return pastel_style
 
     elif style_name == "🎮 Cinematic Warm Filter":
         def warm_style(frame):
@@ -47,7 +47,8 @@ def get_transform_function(style_name):
             return np.clip(frame + noise, 0, 255).astype(np.uint8)
         return warm_style
 
-    return lambda frame: frame
+    else:
+        return lambda frame: frame
 
 def add_rain_effect(frame, density=0.002):
     frame = frame.copy()
@@ -126,19 +127,16 @@ if uploaded_file and generate:
             apply_watermark(styled_temp, watermarked_output)
             final_path = watermarked_output
 
-        # Save full-resolution download versions
         original_save = os.path.join(output_dir, "original.mp4")
         styled_save = os.path.join(output_dir, "styled.mp4")
         shutil.copy(input_path, original_save)
         shutil.copy(final_path, styled_save)
 
-        # Generate preview versions (small size)
         preview_orig = os.path.join(tmpdir, "preview_orig.mp4")
         preview_styled = os.path.join(tmpdir, "preview_styled.mp4")
         clip.resize(height=200).write_videofile(preview_orig, codec="libx264", audio=False, preset="ultrafast")
         VideoFileClip(final_path).resize(height=200).write_videofile(preview_styled, codec="libx264", audio=False, preset="ultrafast")
 
-        # Display side-by-side previews
         col1, col2 = st.columns(2)
         with col1:
             st.subheader("🔍 Original Preview")
@@ -147,7 +145,6 @@ if uploaded_file and generate:
             st.subheader("🎨 Styled Preview")
             st.video(preview_styled)
 
-        # Downloads (full quality)
         st.download_button("⬇️ Download Original", open(original_save, "rb").read(), file_name="original.mp4")
         st.download_button("⬇️ Download Styled", open(styled_save, "rb").read(), file_name="styled.mp4")
 
