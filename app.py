@@ -5,6 +5,7 @@ import time
 import shutil
 import tempfile
 from moviepy.editor import VideoFileClip
+from moviepy.video.io.ffmpeg_writer import FFMPEG_VideoWriter
 import numpy as np
 
 st.set_page_config(page_title="Cartoon Video Generator", layout="centered")
@@ -37,7 +38,8 @@ def get_transform_function(style_name):
 
     return lambda frame: frame
 
-# ---------- UI Layout ----------
+# ========== UI ==========
+st.markdown("---")
 st.header("🎨 Apply Style to Single Video")
 
 uploaded_file = st.file_uploader("📤 Upload a Video", type=["mp4"])
@@ -45,56 +47,71 @@ style = st.selectbox(
     "🎨 Choose a Style",
     ["None", "🌸 Soft Pastel Anime-Like Style", "🎮 Cinematic Warm Filter"]
 )
+generate = st.button("🌸 Generate Styled Video")
+output_dir = "processed_videos"
+os.makedirs(output_dir, exist_ok=True)
 
-if uploaded_file and st.button("🌸 Generate Styled Video"):
+if uploaded_file and generate:
     start_time = time.time()
-    output_dir = "processed_videos"
-    os.makedirs(output_dir, exist_ok=True)
-
     with tempfile.TemporaryDirectory() as tmpdir:
         input_path = os.path.join(tmpdir, "input.mp4")
         with open(input_path, "wb") as f:
             f.write(uploaded_file.read())
 
         clip = VideoFileClip(input_path)
+        fps = clip.fps
+        w, h = clip.size
         transform_fn = get_transform_function(style)
 
         styled_path = os.path.join(tmpdir, "styled.mp4")
+        writer = FFMPEG_VideoWriter(styled_path, (w, h), fps, codec="libx264", audio=True)
 
-        def process_frame(get_frame, t):
-            frame = get_frame(t)
-            frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-            styled = transform_fn(frame)
-            return cv2.cvtColor(styled, cv2.COLOR_BGR2RGB)
+        for frame in clip.iter_frames(dtype="uint8", progress_bar=True):
+            bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+            styled = transform_fn(bgr)
+            rgb = cv2.cvtColor(styled, cv2.COLOR_BGR2RGB)
+            writer.write_frame(rgb)
+        writer.close()
 
-        styled_clip = clip.fl(process_frame)
-        styled_clip.write_videofile(styled_path, codec="libx264", audio_codec="aac", logger=None)
+        # Save previews (360p side-by-side)
+        preview_original_temp = os.path.join(tmpdir, "original_preview.mp4")
+        preview_styled_temp = os.path.join(tmpdir, "styled_preview.mp4")
+        clip.resize(height=360).write_videofile(preview_original_temp, codec="libx264", audio_codec="aac", verbose=False, logger=None)
+        VideoFileClip(styled_path).resize(height=360).write_videofile(preview_styled_temp, codec="libx264", audio_codec="aac", verbose=False, logger=None)
 
-        # Previews (360p)
-        preview_original = os.path.join(tmpdir, "original_preview.mp4")
-        preview_styled = os.path.join(tmpdir, "styled_preview.mp4")
-
-        clip.resize(height=360).write_videofile(preview_original, codec="libx264", audio_codec="aac", logger=None)
-        VideoFileClip(styled_path).resize(height=360).write_videofile(preview_styled, codec="libx264", audio_codec="aac", logger=None)
-
-        # Copy to final output
+        # Save to persistent output dir
         orig_final = os.path.join(output_dir, "original.mp4")
         styled_final = os.path.join(output_dir, "styled.mp4")
+        preview_orig_final = os.path.join(output_dir, "original_preview.mp4")
+        preview_styled_final = os.path.join(output_dir, "styled_preview.mp4")
+
         shutil.copy(input_path, orig_final)
         shutil.copy(styled_path, styled_final)
+        shutil.copy(preview_original_temp, preview_orig_final)
+        shutil.copy(preview_styled_temp, preview_styled_final)
 
-        # Show results only now
-        st.success(f"✅ Done in {time.time() - start_time:.2f} seconds")
+        # Session save
+        st.session_state["original_path"] = orig_final
+        st.session_state["styled_output_path"] = styled_final
+        st.session_state["preview_original"] = preview_orig_final
+        st.session_state["preview_styled"] = preview_styled_final
+        st.session_state["process_time"] = time.time() - start_time
 
-        col1, col2 = st.columns(2)
-        with col1:
-            st.subheader("🔹 Original (Preview)")
-            st.video(preview_original)
-            with open(orig_final, "rb") as f:
-                st.download_button("⬇️ Download Original", f.read(), file_name="original.mp4")
+# ========== Display Result ==========
+if all(k in st.session_state for k in ["original_path", "styled_output_path", "preview_original", "preview_styled"]):
+    st.subheader("🎬 Comparison Preview (360p)")
+    col1, col2 = st.columns(2)
 
-        with col2:
-            st.subheader("🔸 Styled (Preview)")
-            st.video(preview_styled)
-            with open(styled_final, "rb") as f:
-                st.download_button("⬇️ Download Styled", f.read(), file_name="styled.mp4")
+    with col1:
+        st.caption("🔹 Original")
+        st.video(st.session_state["preview_original"])
+        with open(st.session_state["original_path"], "rb") as f:
+            st.download_button("⬇️ Download Original", f.read(), file_name="original.mp4")
+
+    with col2:
+        st.caption("🔸 Styled")
+        st.video(st.session_state["preview_styled"])
+        with open(st.session_state["styled_output_path"], "rb") as f:
+            st.download_button("⬇️ Download Styled", f.read(), file_name="styled.mp4")
+
+    st.success(f"✅ Done in {st.session_state['process_time']:.2f} sec")
