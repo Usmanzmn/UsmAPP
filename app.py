@@ -65,8 +65,17 @@ if uploaded_file and style_option:
                     st.stop()
 
                 styled_path = os.path.join(tmpdir, "styled.mp4")
+
                 writer = FFMPEG_VideoWriter(
-                    styled_path, (w, h), fps, codec="libx264", preset="ultrafast", audio=False
+                    filename=styled_path,
+                    size=(w, h),
+                    fps=fps,
+                    codec="libx264",
+                    preset="ultrafast",
+                    bitrate=None,
+                    audiofile=None,  # ⛔️ Skip audio
+                    threads=None,
+                    ffmpeg_params=["-an"]  # 👈 skip audio
                 )
 
                 transform_fn = get_transform_function(style_option)
