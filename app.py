@@ -4,7 +4,6 @@ import tempfile
 import subprocess
 import time
 from moviepy.editor import VideoFileClip
-from PIL import Image
 import numpy as np
 import cv2
 import shutil
@@ -18,21 +17,14 @@ def get_transform_function(style_name):
     if style_name == "🌸 Soft Pastel Anime-Like Style":
         def pastel_style(frame):
             frame = frame.astype(np.float32)
-
             r = np.clip(frame[:, :, 0] * 1.12 + 24, 0, 255)
             g = np.clip(frame[:, :, 1] * 1.09 + 18, 0, 255)
             b = np.clip(frame[:, :, 2] * 1.2 + 30, 0, 255)
-
-            frame[:, :, 0] = r
-            frame[:, :, 1] = g
-            frame[:, :, 2] = b
-
+            frame[:, :, 0], frame[:, :, 1], frame[:, :, 2] = r, g, b
             blurred = cv2.GaussianBlur(frame, (7, 7), 1)
             blended = frame * 0.35 + blurred * 0.65
-
             tint = np.array([15, -5, 18], dtype=np.float32)
             result = np.clip(blended + tint, 0, 255)
-
             return result.astype(np.uint8)
         return pastel_style
 
@@ -58,9 +50,8 @@ def add_rain_effect(frame, density=0.002):
         x = random.randint(0, w - 1)
         y = random.randint(0, h - 20)
         length = random.randint(10, 20)
-        thickness = 1
         color = (200, 200, 255)
-        cv2.line(frame, (x, y), (x, y + length), color, thickness)
+        cv2.line(frame, (x, y), (x, y + length), color, 1)
     return frame
 
 def apply_watermark(input_path, output_path, text="@USMIKASHMIRI"):
@@ -82,6 +73,12 @@ st.markdown("---")
 st.header("🎨 Apply Style to Single Video")
 
 uploaded_file = st.file_uploader("📤 Upload a Video", type=["mp4"], key="style_upload")
+
+# Reset session state if new file is uploaded
+if uploaded_file:
+    st.session_state.pop("original_video_bytes", None)
+    st.session_state.pop("styled_video_bytes", None)
+
 style = st.selectbox("🎨 Choose a Style", ["None", "🌸 Soft Pastel Anime-Like Style", "🎮 Cinematic Warm Filter"])
 add_watermark = st.checkbox("✅ Add Watermark (@USMIKASHMIRI)", value=False)
 rain_option = st.selectbox("🌧️ Add Rain Overlay", ["None", "🌧️ Light Rain (Default)", "🌦️ Extra Light Rain", "🌤️ Ultra Light Rain"])
@@ -101,18 +98,15 @@ if uploaded_file and generate:
         original_w, original_h = clip.size
         max_height = 720
 
-        # Resize down to 720p if higher
+        # Resize if needed
         if original_h > max_height:
             resize_ratio = max_height / original_h
-            new_w = int(original_w * resize_ratio)
-            new_h = max_height
-            clip = clip.resize((new_w, new_h))
-            resized_for_processing = True
+            clip = clip.resize((int(original_w * resize_ratio), max_height))
+            resized = True
         else:
-            resized_for_processing = False
+            resized = False
 
         transform_fn = get_transform_function(style)
-
         rain_density = {
             "🌧️ Light Rain (Default)": 0.002,
             "🌦️ Extra Light Rain": 0.0008,
@@ -123,20 +117,16 @@ if uploaded_file and generate:
         def full_effect(frame):
             frame = transform_fn(frame)
             if rain_density:
-                frame = add_rain_effect(frame, density=rain_density)
+                frame = add_rain_effect(frame, rain_density)
             return frame
 
         styled_clip = clip.fl_image(full_effect)
 
-        # Resize back to original resolution if needed
-        if resized_for_processing:
+        if resized:
             styled_clip = styled_clip.resize((original_w, original_h))
 
         styled_temp = os.path.join(tmpdir, "styled.mp4")
-        styled_clip.write_videofile(
-            styled_temp, codec="libx264", audio=False,
-            preset="ultrafast", threads=4
-        )
+        styled_clip.write_videofile(styled_temp, codec="libx264", audio=False, preset="ultrafast", threads=4)
 
         final_path = styled_temp
         if add_watermark:
@@ -149,6 +139,7 @@ if uploaded_file and generate:
         shutil.copy(input_path, original_save)
         shutil.copy(final_path, styled_save)
 
+        # Save preview videos
         preview_orig = os.path.join(tmpdir, "preview_orig.mp4")
         preview_styled = os.path.join(tmpdir, "preview_styled.mp4")
         clip.resize(height=200).write_videofile(preview_orig, codec="libx264", audio=False, preset="ultrafast")
@@ -162,7 +153,16 @@ if uploaded_file and generate:
             st.subheader("🎨 Styled Preview")
             st.video(preview_styled)
 
-        st.download_button("⬇️ Download Original", open(original_save, "rb").read(), file_name="original.mp4")
-        st.download_button("⬇️ Download Styled", open(styled_save, "rb").read(), file_name="styled.mp4")
+        # Store in session_state for persistent download
+        if "original_video_bytes" not in st.session_state:
+            with open(original_save, "rb") as f:
+                st.session_state.original_video_bytes = f.read()
+
+        if "styled_video_bytes" not in st.session_state:
+            with open(styled_save, "rb") as f:
+                st.session_state.styled_video_bytes = f.read()
+
+        st.download_button("⬇️ Download Original", st.session_state.original_video_bytes, file_name="original.mp4")
+        st.download_button("⬇️ Download Styled", st.session_state.styled_video_bytes, file_name="styled.mp4")
 
         st.success(f"✅ Done in {time.time() - start_time:.2f} seconds")
