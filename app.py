@@ -52,10 +52,6 @@ if uploaded_file and style_option:
 
             with tempfile.TemporaryDirectory() as tmpdir:
                 input_path = os.path.join(tmpdir, "input_video.mp4")
-                styled_path = os.path.join(tmpdir, "styled.mp4")
-                preview_original_path = os.path.join(tmpdir, "preview_original.mp4")
-                preview_styled_path = os.path.join(tmpdir, "preview_styled.mp4")
-
                 with open(input_path, "wb") as f:
                     f.write(uploaded_file.read())
 
@@ -65,16 +61,13 @@ if uploaded_file and style_option:
                 h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
                 total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
-                if fps == 0 or w == 0 or h == 0:
-                    st.error("❌ Failed to read video properties.")
-                    st.stop()
-
-                transform_fn = get_transform_function(style_option)
+                styled_path = os.path.join(tmpdir, "styled.mp4")
                 writer = FFMPEG_VideoWriter(styled_path, (w, h), fps, codec="libx264")
 
-                frame_count = 0
+                transform_fn = get_transform_function(style_option)
                 progress_bar = st.progress(0, text="Starting frame-by-frame processing...")
 
+                frame_count = 0
                 while True:
                     ret, frame = cap.read()
                     if not ret:
@@ -88,47 +81,56 @@ if uploaded_file and style_option:
 
                 cap.release()
                 writer.close()
-                time.sleep(1)  # ensure file is flushed before opening
 
+                # Confirm styled file was written
                 if not os.path.exists(styled_path) or os.path.getsize(styled_path) == 0:
                     st.error("❌ Styled video generation failed. File is empty or corrupted.")
-                    st.stop()
+                else:
+                    preview_original_path = os.path.join(tmpdir, "preview_original.mp4")
+                    preview_styled_path = os.path.join(tmpdir, "preview_styled.mp4")
 
-                try:
-                    st.success(f"✅ Done in {round(time.time() - start_time, 2)} seconds!")
-                    st.markdown("### 🔍 Side-by-Side Preview (360p)")
+                    try:
+                        # Validate styled file with OpenCV
+                        cap_check = cv2.VideoCapture(styled_path)
+                        fps_check = cap_check.get(cv2.CAP_PROP_FPS)
+                        cap_check.release()
 
-                    VideoFileClip(input_path).resize(height=360).write_videofile(
-                        preview_original_path, codec="libx264", audio=False,
-                        verbose=False, logger=None
-                    )
-                    VideoFileClip(styled_path).resize(height=360).write_videofile(
-                        preview_styled_path, codec="libx264", audio=False,
-                        verbose=False, logger=None
-                    )
+                        if fps_check == 0:
+                            raise ValueError("Preview creation failed: Invalid FPS (0).")
 
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.video(preview_original_path)
-                        st.caption("📹 Original")
-                    with col2:
-                        st.video(preview_styled_path)
-                        st.caption("🎨 Styled")
+                        st.success(f"✅ Done in {round(time.time() - start_time, 2)} seconds!")
+                        st.markdown("### 🔍 Side-by-Side Preview (360p)")
 
-                except Exception as e:
-                    st.warning(f"⚠️ Preview creation failed: {e}")
+                        try:
+                            original_clip = VideoFileClip(input_path).resize(height=360)
+                            original_clip.write_videofile(preview_original_path, codec="libx264", audio=False, verbose=False, logger=None)
+                            original_clip.close()
 
-                # Full styled video section
-                with open(styled_path, "rb") as f:
-                    styled_video_bytes = f.read()
+                            styled_clip = VideoFileClip(styled_path).resize(height=360)
+                            styled_clip.write_videofile(preview_styled_path, codec="libx264", audio=False, verbose=False, logger=None)
+                            styled_clip.close()
 
-                st.markdown("### 🎥 Full Styled Video")
-                st.video(styled_video_bytes)
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                st.video(preview_original_path)
+                                st.caption("📹 Original")
+                            with col2:
+                                st.video(preview_styled_path)
+                                st.caption("🎨 Styled")
+                        except Exception as e:
+                            st.warning(f"⚠️ MoviePy preview creation failed: {e}")
 
-                st.download_button(
-                    "⬇️ Download Styled Video",
-                    data=styled_video_bytes,
-                    file_name="styled_output.mp4",
-                    mime="video/mp4",
-                    key="download-button"
-                )
+                    except Exception as e:
+                        st.warning(f"⚠️ Preview creation failed: {e}")
+
+                    # Full resolution video output & download
+                    if os.path.exists(styled_path) and os.path.getsize(styled_path) > 0:
+                        with open(styled_path, "rb") as f:
+                            styled_video_bytes = f.read()
+
+                        st.markdown("### 🎥 Full Styled Video")
+                        st.video(styled_video_bytes)
+                        st.download_button("⬇️ Download Styled Video",
+                                           data=styled_video_bytes,
+                                           file_name="styled_output.mp4",
+                                           mime="video/mp4")
