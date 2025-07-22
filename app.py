@@ -146,6 +146,17 @@ if uploaded_file and style_option:
                     st.caption("🎨 Styled")
 
                 st.markdown("### ⬇️ Download Full Styled Video")
-                with open(styled_path, "rb") as f:
-                    st.download_button("Download Styled Video", f,
-                                       file_name="styled_output.mp4", mime="video/mp4")
+               # Read styled video into memory once
+with open(styled_path, "rb") as f:
+    styled_video_bytes = f.read()
+
+# Show video
+st.video(styled_video_bytes)
+st.caption("🎨 Full Styled Video")
+
+# Download button using same bytes
+st.download_button("⬇️ Download Styled Video",
+                   data=styled_video_bytes,
+                   file_name="styled_output.mp4",
+                   mime="video/mp4")
+
