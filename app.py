@@ -62,7 +62,7 @@ def apply_watermark(input_path, output_path, text="@USMIKASHMIRI"):
     watermark_filter = (
         "scale=ceil(iw/2)*2:ceil(ih/2)*2," +
         f"drawtext=fontfile='/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf':" +
-        f"text='{text}':x=w-mod(t*240\\,w+tw):y=h-160:"
+        f"text='{text}':x=w-mod(t*240\\,w+tw):y=h-160:" +
         "fontsize=40:fontcolor=white@0.6:shadowcolor=black:shadowx=2:shadowy=2"
     )
     cmd = [
@@ -92,7 +92,11 @@ if uploaded_file and generate:
         with open(input_path, "wb") as f:
             f.write(uploaded_file.read())
 
-        clip = VideoFileClip(input_path).resize(height=480)
+        # Full resolution clip for final output
+        full_clip = VideoFileClip(input_path)
+        # Smaller resolution clip for preview
+        preview_clip = full_clip.resize(height=360)
+
         transform_fn = get_transform_function(style)
 
         rain_density = {
@@ -108,13 +112,15 @@ if uploaded_file and generate:
                 frame = add_rain_effect(frame, density=rain_density)
             return frame
 
-        styled_clip = clip.fl_image(full_effect)
+        styled_clip = full_clip.fl_image(full_effect)
 
         styled_temp = os.path.join(tmpdir, "styled.mp4")
         styled_clip.write_videofile(
-            styled_temp, codec="libx264", audio_codec="aac",
-            preset="ultrafast", threads=4, temp_audiofile=os.path.join(tmpdir, "temp-audio.m4a"),
-            remove_temp=True
+            styled_temp,
+            codec="libx264",
+            audio=False,  # ✅ No audio in final output
+            preset="ultrafast",
+            threads=4
         )
 
         final_path = styled_temp
@@ -123,19 +129,23 @@ if uploaded_file and generate:
             apply_watermark(styled_temp, watermarked_output)
             final_path = watermarked_output
 
-        # Previews - disable audio for speed
+        # Previews (no audio, resized)
         preview_original = os.path.join(output_dir, "original_preview.mp4")
         preview_styled = os.path.join(output_dir, "styled_preview.mp4")
-        clip.resize(height=360).write_videofile(preview_original, codec="libx264", audio=False, preset="ultrafast")
+        preview_clip.write_videofile(preview_original, codec="libx264", audio=False, preset="ultrafast")
         VideoFileClip(final_path).resize(height=360).write_videofile(preview_styled, codec="libx264", audio=False, preset="ultrafast")
 
-        shutil.copy(input_path, os.path.join(output_dir, "original.mp4"))
-        shutil.copy(final_path, os.path.join(output_dir, "styled.mp4"))
+        # Save high-res downloadables (no audio)
+        final_original = os.path.join(output_dir, "original.mp4")
+        final_styled = os.path.join(output_dir, "styled.mp4")
+        full_clip.write_videofile(final_original, codec="libx264", audio=False, preset="ultrafast")
+        shutil.copy(final_path, final_styled)
 
         # Display
         st.video(preview_original)
-        st.download_button("⬇️ Download Original", open(os.path.join(output_dir, "original.mp4"), "rb").read(), file_name="original.mp4")
+        st.download_button("⬇️ Download Original", open(final_original, "rb").read(), file_name="original.mp4")
+
         st.video(preview_styled)
-        st.download_button("⬇️ Download Styled", open(os.path.join(output_dir, "styled.mp4"), "rb").read(), file_name="styled.mp4")
+        st.download_button("⬇️ Download Styled", open(final_styled, "rb").read(), file_name="styled.mp4")
 
         st.success(f"✅ Done in {time.time() - start_time:.2f} sec")
