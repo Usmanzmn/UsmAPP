@@ -49,8 +49,13 @@ if uploaded_file and style_option:
         start_time = time.time()
 
         with st.spinner("⏳ Processing... Please wait."):
+
             with tempfile.TemporaryDirectory() as tmpdir:
                 input_path = os.path.join(tmpdir, "input_video.mp4")
+                styled_path = os.path.join(tmpdir, "styled.mp4")
+                preview_original_path = os.path.join(tmpdir, "preview_original.mp4")
+                preview_styled_path = os.path.join(tmpdir, "preview_styled.mp4")
+
                 with open(input_path, "wb") as f:
                     f.write(uploaded_file.read())
 
@@ -60,13 +65,16 @@ if uploaded_file and style_option:
                 h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
                 total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
-                styled_path = os.path.join(tmpdir, "styled.mp4")
-                writer = FFMPEG_VideoWriter(styled_path, (w, h), fps, codec="libx264")
+                if fps == 0 or w == 0 or h == 0:
+                    st.error("❌ Failed to read video properties.")
+                    st.stop()
 
                 transform_fn = get_transform_function(style_option)
-                progress_bar = st.progress(0, text="Starting frame-by-frame processing...")
+                writer = FFMPEG_VideoWriter(styled_path, (w, h), fps, codec="libx264")
 
                 frame_count = 0
+                progress_bar = st.progress(0, text="Starting frame-by-frame processing...")
+
                 while True:
                     ret, frame = cap.read()
                     if not ret:
@@ -80,52 +88,47 @@ if uploaded_file and style_option:
 
                 cap.release()
                 writer.close()
+                time.sleep(1)  # ensure file is flushed before opening
 
                 if not os.path.exists(styled_path) or os.path.getsize(styled_path) == 0:
                     st.error("❌ Styled video generation failed. File is empty or corrupted.")
-                else:
-                    # Use original fps for preview
-                    cap_preview = cv2.VideoCapture(input_path)
-                    original_fps = cap_preview.get(cv2.CAP_PROP_FPS)
-                    cap_preview.release()
+                    st.stop()
 
-                    # Create preview at 360p
-                    try:
-                        preview_original_path = os.path.join(tmpdir, "preview_original.mp4")
-                        preview_styled_path = os.path.join(tmpdir, "preview_styled.mp4")
+                try:
+                    st.success(f"✅ Done in {round(time.time() - start_time, 2)} seconds!")
+                    st.markdown("### 🔍 Side-by-Side Preview (360p)")
 
-                        VideoFileClip(input_path).resize(height=360).write_videofile(
-                            preview_original_path, codec="libx264", audio=False,
-                            fps=original_fps, verbose=False, logger=None
-                        )
-                        VideoFileClip(styled_path).resize(height=360).write_videofile(
-                            preview_styled_path, codec="libx264", audio=False,
-                            fps=original_fps, verbose=False, logger=None
-                        )
+                    VideoFileClip(input_path).resize(height=360).write_videofile(
+                        preview_original_path, codec="libx264", audio=False,
+                        verbose=False, logger=None
+                    )
+                    VideoFileClip(styled_path).resize(height=360).write_videofile(
+                        preview_styled_path, codec="libx264", audio=False,
+                        verbose=False, logger=None
+                    )
 
-                        st.success(f"✅ Done in {round(time.time() - start_time, 2)} seconds!")
-                        st.markdown("### 🔍 Side-by-Side Preview (360p)")
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            st.video(preview_original_path)
-                            st.caption("📹 Original")
-                        with col2:
-                            st.video(preview_styled_path)
-                            st.caption("🎨 Styled")
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.video(preview_original_path)
+                        st.caption("📹 Original")
+                    with col2:
+                        st.video(preview_styled_path)
+                        st.caption("🎨 Styled")
 
-                    except Exception as e:
-                        st.warning(f"⚠️ Preview creation failed: {e}")
+                except Exception as e:
+                    st.warning(f"⚠️ Preview creation failed: {e}")
 
-                    # Full resolution video output & download
-                    if os.path.exists(styled_path) and os.path.getsize(styled_path) > 0:
-                        with open(styled_path, "rb") as f:
-                            styled_video_bytes = f.read()
+                # Full styled video section
+                with open(styled_path, "rb") as f:
+                    styled_video_bytes = f.read()
 
-                        st.markdown("### 🎥 Full Styled Video")
-                        st.video(styled_video_bytes)
-                        st.download_button("⬇️ Download Styled Video",
-                                           data=styled_video_bytes,
-                                           file_name="styled_output.mp4",
-                                           mime="video/mp4",
-                                           key="download_button_keep_video")
+                st.markdown("### 🎥 Full Styled Video")
+                st.video(styled_video_bytes)
 
+                st.download_button(
+                    "⬇️ Download Styled Video",
+                    data=styled_video_bytes,
+                    file_name="styled_output.mp4",
+                    mime="video/mp4",
+                    key="download-button"
+                )
