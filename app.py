@@ -15,9 +15,11 @@ st.title("🎨 AI Video Effects App")
 
 @st.cache_resource
 def get_transform_function(style_name):
-    if style_name == "🌸 Soft Pastel Anime-Like Style":
+    elif style_name == "🌸 Soft Pastel Anime-Like Style":
+    def pastel_style(frame):
         frame = frame.astype(np.float32)
-            # Pastel color boost
+        
+        # Pastel color boost
         frame[:, :, 0] = np.clip(frame[:, :, 0] * 1.3 + 30, 0, 255)  # R
         frame[:, :, 1] = np.clip(frame[:, :, 1] * 1.15 + 20, 0, 255) # G
         frame[:, :, 2] = np.clip(frame[:, :, 2] * 1.25 + 25, 0, 255) # B
