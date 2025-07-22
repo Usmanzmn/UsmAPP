@@ -72,7 +72,7 @@ if uploaded_file and style_option:
             transform_fn = get_transform_function(style_option)
             writer = FFMPEG_VideoWriter(styled_path, (w, h), fps, codec="libx264")
 
-            for frame in clip.iter_frames(dtype="uint8", progress_bar=True):
+            for frame in clip.iter_frames(dtype="uint8"):  # 🔧 Fixed here: Removed progress_bar
                 bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
                 styled = transform_fn(bgr)
                 rgb = cv2.cvtColor(styled, cv2.COLOR_BGR2RGB)
@@ -88,7 +88,7 @@ if uploaded_file and style_option:
             styled_clip.write_videofile(styled_preview_path, codec="libx264", audio=False, verbose=False, logger=None)
             styled_clip.close()
 
-            st.success(f"✅ Done in {round(clip.duration, 2)} seconds\n**{style_option}** applied!")
+            st.success(f"✅ Done! Style: **{style_option}**")
 
             st.markdown("### 🔍 Comparison Preview (360p)")
             col1, col2 = st.columns(2)
