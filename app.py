@@ -1,101 +1,131 @@
 import streamlit as st
-from moviepy.editor import VideoFileClip, vfx
-import tempfile
 import os
-import shutil
+import tempfile
 import time
+import cv2
+import numpy as np
+from moviepy.editor import VideoFileClip
+from moviepy.video.io.ffmpeg_writer import FFMPEG_VideoWriter
 
-st.set_page_config(page_title="🎬 Video Stylizer", layout="centered")
-st.title("🎨 Video Cartoonizer with Cinematic Filter")
+def get_transform_function(style_name):
+    if style_name == "🌸 Soft Pastel Anime-Like Style":
+        def pastel_style(frame):
+            r, g, b = frame[:, :, 0], frame[:, :, 1], frame[:, :, 2]
+            r = np.clip(r * 1.15 + 30, 0, 255)
+            g = np.clip(g * 1.10 + 20, 0, 255)
+            b = np.clip(b * 1.25 + 35, 0, 255)
+            blurred = (frame.astype(np.float32) * 0.35 +
+                       cv2.GaussianBlur(frame, (7, 7), 0).astype(np.float32) * 0.65)
+            tint = np.array([15, -10, 25], dtype=np.float32)
+            result = np.clip(blurred + tint, 0, 255).astype(np.uint8)
+            return result
+        return pastel_style
 
-def apply_cartoon_and_filter(input_path, output_path):
-    clip = VideoFileClip(input_path)
+    elif style_name == "🎮 Cinematic Warm Filter":
+        def warm_style(frame):
+            r, g, b = frame[:, :, 0], frame[:, :, 1], frame[:, :, 2]
+            r = np.clip(r * 1.30 + 25, 0, 255)
+            g = np.clip(g * 1.20 + 20, 0, 255)
+            b = np.clip(b * 0.85, 0, 255)
+            return np.stack([r, g, b], axis=2).astype(np.uint8)
+        return warm_style
 
-    # 🟠 Cartoon effect (simple edge-preserving technique)
-    cartoon_clip = clip.fx(vfx.colorx, 1.1).fx(vfx.lum_contrast, 0, 30, 255)
+    return lambda frame: frame
 
-    # 🟠 Cinematic warm color grading
-    warm_clip = cartoon_clip.fx(vfx.colorx, 1.2)
+# Streamlit UI
+st.set_page_config(page_title="🎨 AI Video Styler", layout="centered")
+st.title("🎨 AI Video Styler")
+st.markdown("Upload a video and choose a style to apply. Preview the result side-by-side!")
 
-    warm_clip.write_videofile(output_path, codec="libx264", audio_codec="aac", preset="medium", verbose=False, logger=None)
+uploaded_file = st.file_uploader("📤 Upload Video", type=["mp4", "mov", "avi"])
+style_option = st.selectbox("🎨 Choose a Style", [
+    "🌸 Soft Pastel Anime-Like Style", "🎮 Cinematic Warm Filter"
+])
 
-    clip.close()
-    cartoon_clip.close()
-    warm_clip.close()
+if uploaded_file and style_option:
+    generate = st.button("🚀 Generate Styled Video")
 
-def save_uploaded_file(uploadedfile):
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as tmp_file:
-        tmp_file.write(uploadedfile.read())
-        return tmp_file.name
+    if generate:
+        start_time = time.time()
 
-# Upload
-uploaded_file = st.file_uploader("📤 Upload an MP4 video (Max ~100MB)", type=["mp4"])
-if uploaded_file is not None:
-    input_path = save_uploaded_file(uploaded_file)
+        with st.spinner("⏳ Processing... Please wait."):
+            with tempfile.TemporaryDirectory() as tmpdir:
+                input_path = os.path.join(tmpdir, "input_video.mp4")
+                with open(input_path, "wb") as f:
+                    f.write(uploaded_file.read())
 
-    with st.spinner("✨ Applying cartoon effect and cinematic filter..."):
-        try:
-            start_time = time.time()
-            tmpdir = tempfile.mkdtemp()
-            styled_path = os.path.join(tmpdir, "styled.mp4")
-            apply_cartoon_and_filter(input_path, styled_path)
+                cap = cv2.VideoCapture(input_path)
+                fps = cap.get(cv2.CAP_PROP_FPS)
+                w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
-            # ✅ Ensure styled video is valid before previews
-            if not os.path.exists(styled_path) or os.path.getsize(styled_path) < 1000:
-                st.error("❌ Styled video generation failed. File is empty or corrupted.")
-                raise ValueError("Styled video is corrupted or empty.")
+                styled_path = os.path.join(tmpdir, "styled.mp4")
+                writer = FFMPEG_VideoWriter(styled_path, (w, h), fps, codec="libx264")
 
-            # 🎬 Attempt preview creation (360p)
-            preview_original_path = os.path.join(tmpdir, "preview_original.mp4")
-            preview_styled_path = os.path.join(tmpdir, "preview_styled.mp4")
+                transform_fn = get_transform_function(style_option)
+                progress_bar = st.progress(0, text="Starting frame-by-frame processing...")
 
-            try:
-                clip_original = VideoFileClip(input_path)
-                clip_original.resize(height=360).write_videofile(
-                    preview_original_path, codec="libx264", audio=False, verbose=False, logger=None
-                )
-                clip_original.close()
-            except Exception as e:
-                st.warning(f"⚠️ Failed to create original preview: {e}")
-                preview_original_path = None
+                frame_count = 0
+                while True:
+                    ret, frame = cap.read()
+                    if not ret:
+                        break
+                    styled = transform_fn(frame)
+                    writer.write_frame(cv2.cvtColor(styled, cv2.COLOR_BGR2RGB))
 
-            try:
-                clip_styled = VideoFileClip(styled_path)
-                clip_styled.resize(height=360).write_videofile(
-                    preview_styled_path, codec="libx264", audio=False, verbose=False, logger=None
-                )
-                clip_styled.close()
-            except Exception as e:
-                st.warning(f"⚠️ Failed to create styled preview: {e}")
-                preview_styled_path = None
+                    frame_count += 1
+                    progress_bar.progress(min(frame_count / total_frames, 1.0),
+                                          text=f"{frame_count}/{total_frames} frames done")
 
-            st.success(f"✅ Done in {round(time.time() - start_time, 2)} seconds!")
-            st.markdown("### 🔍 Side-by-Side Preview (360p)")
-            col1, col2 = st.columns(2)
-            with col1:
-                if preview_original_path and os.path.exists(preview_original_path):
-                    st.video(preview_original_path)
-                    st.caption("📹 Original")
-            with col2:
-                if preview_styled_path and os.path.exists(preview_styled_path):
-                    st.video(preview_styled_path)
-                    st.caption("🎨 Styled")
+                cap.release()
+                writer.close()
 
-            # 🟢 Play styled video again for download + persistent view
-            st.markdown("---")
-            st.markdown("### 📥 Download Styled Video")
-            st.video(styled_path)
-            with open(styled_path, "rb") as f:
-                st.download_button(
-                    label="⬇️ Download Styled MP4",
-                    data=f,
-                    file_name="styled_output.mp4",
-                    mime="video/mp4"
-                )
+                if not os.path.exists(styled_path) or os.path.getsize(styled_path) == 0:
+                    st.error("❌ Styled video generation failed. File is empty or corrupted.")
+                else:
+                    # Use original fps for preview
+                    cap_preview = cv2.VideoCapture(input_path)
+                    original_fps = cap_preview.get(cv2.CAP_PROP_FPS)
+                    cap_preview.release()
 
-        except Exception as e:
-            st.error(f"❌ Processing failed: {e}")
+                    # Create preview at 360p
+                    try:
+                        preview_original_path = os.path.join(tmpdir, "preview_original.mp4")
+                        preview_styled_path = os.path.join(tmpdir, "preview_styled.mp4")
 
-        finally:
-            if os.path.exists(input_path):
-                os.remove(input_path)
+                        VideoFileClip(input_path).resize(height=360).write_videofile(
+                            preview_original_path, codec="libx264", audio=False,
+                            fps=original_fps, verbose=False, logger=None
+                        )
+                        VideoFileClip(styled_path).resize(height=360).write_videofile(
+                            preview_styled_path, codec="libx264", audio=False,
+                            fps=original_fps, verbose=False, logger=None
+                        )
+
+                        st.success(f"✅ Done in {round(time.time() - start_time, 2)} seconds!")
+                        st.markdown("### 🔍 Side-by-Side Preview (360p)")
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            st.video(preview_original_path)
+                            st.caption("📹 Original")
+                        with col2:
+                            st.video(preview_styled_path)
+                            st.caption("🎨 Styled")
+
+                    except Exception as e:
+                        st.warning(f"⚠️ Preview creation failed: {e}")
+
+                    # Full resolution video output & download
+                    if os.path.exists(styled_path) and os.path.getsize(styled_path) > 0:
+                        with open(styled_path, "rb") as f:
+                            styled_video_bytes = f.read()
+
+                        st.markdown("### 🎥 Full Styled Video")
+                        st.video(styled_video_bytes)
+                        st.download_button("⬇️ Download Styled Video",
+                                           data=styled_video_bytes,
+                                           file_name="styled_output.mp4",
+                                           mime="video/mp4",
+                                           key="download_button_keep_video")
+
