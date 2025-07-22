@@ -4,9 +4,11 @@ import tempfile
 import time
 import cv2
 import numpy as np
+from moviepy.editor import VideoFileClip
 from moviepy.video.io.ffmpeg_writer import FFMPEG_VideoWriter
 
-# Style Transform Functions
+
+# Transform Functions
 def get_transform_function(style_name):
     if style_name == "🌸 Soft Pastel Anime-Like Style":
         def pastel_style(frame):
@@ -32,16 +34,24 @@ def get_transform_function(style_name):
 
     return lambda frame: frame
 
-# Resize video to 360p for preview using OpenCV
+
+# Preview Video Generator (Safe Resize)
 def create_preview_video(input_path, output_path, height=360):
     cap = cv2.VideoCapture(input_path)
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    if not cap.isOpened():
+        raise ValueError(f"Failed to open video file: {input_path}")
+
     fps = cap.get(cv2.CAP_PROP_FPS)
     w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+    if h == 0 or w == 0 or fps == 0:
+        raise ValueError("Invalid video file: height, width, or fps is zero.")
+
     scale = height / h
     new_w = int(w * scale)
 
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     out = cv2.VideoWriter(output_path, fourcc, fps, (new_w, height))
 
     while True:
@@ -54,7 +64,8 @@ def create_preview_video(input_path, output_path, height=360):
     cap.release()
     out.release()
 
-# Streamlit App UI
+
+# Streamlit UI
 st.set_page_config(page_title="🎨 AI Video Styler", layout="centered")
 st.title("🎨 AI Video Styler")
 st.markdown("Upload a video and choose a style to apply. Preview the result side-by-side!")
@@ -77,16 +88,24 @@ if uploaded_file and style_option:
                     f.write(uploaded_file.read())
 
                 cap = cv2.VideoCapture(input_path)
+                if not cap.isOpened():
+                    st.error("Failed to read uploaded video.")
+                    st.stop()
+
                 fps = cap.get(cv2.CAP_PROP_FPS)
                 w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
                 h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
                 total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
+                if fps == 0 or w == 0 or h == 0:
+                    st.error("Uploaded video has invalid properties.")
+                    st.stop()
+
                 styled_path = os.path.join(tmpdir, "styled.mp4")
                 writer = FFMPEG_VideoWriter(styled_path, (w, h), fps, codec="libx264")
 
                 transform_fn = get_transform_function(style_option)
-                progress_bar = st.progress(0, text="Processing frames...")
+                progress_bar = st.progress(0, text="Starting frame-by-frame processing...")
 
                 frame_count = 0
                 while True:
@@ -102,11 +121,15 @@ if uploaded_file and style_option:
                 cap.release()
                 writer.close()
 
-                # Create 360p previews using OpenCV (no audio)
                 preview_original_path = os.path.join(tmpdir, "preview_original.mp4")
                 preview_styled_path = os.path.join(tmpdir, "preview_styled.mp4")
-                create_preview_video(input_path, preview_original_path)
-                create_preview_video(styled_path, preview_styled_path)
+
+                try:
+                    create_preview_video(input_path, preview_original_path)
+                    create_preview_video(styled_path, preview_styled_path)
+                except ValueError as e:
+                    st.error(f"⚠️ Preview creation failed: {e}")
+                    st.stop()
 
                 st.success(f"✅ Done in {round(time.time() - start_time, 2)} seconds!")
                 st.markdown("### 🔍 Side-by-Side Preview (360p)")
@@ -121,4 +144,5 @@ if uploaded_file and style_option:
 
                 st.markdown("### ⬇️ Download Full Styled Video")
                 with open(styled_path, "rb") as f:
-                    st.download_button("Download Styled Video", f, file_name="styled_output.mp4", mime="video/mp4")
+                    st.download_button("Download Styled Video", f,
+                                       file_name="styled_output.mp4", mime="video/mp4")
