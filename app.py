@@ -6,7 +6,6 @@ import cv2
 import numpy as np
 from moviepy.editor import VideoFileClip
 
-# Define video style transformations
 def get_transform_function(style_name):
     if style_name == "🌸 Soft Pastel Anime-Like Style":
         def pastel_style(frame):
@@ -30,9 +29,8 @@ def get_transform_function(style_name):
             return np.stack([r, g, b], axis=2).astype(np.uint8)
         return warm_style
 
-    return lambda frame: frame  # fallback (no style)
+    return lambda frame: frame
 
-# Streamlit UI setup
 st.set_page_config(page_title="🎨 AI Video Styler", layout="centered")
 st.title("🎨 AI Video Styler")
 st.markdown("Upload a video and choose a style to apply. Preview the result side-by-side!")
@@ -55,7 +53,7 @@ if uploaded_file and style_option:
                     f.write(uploaded_file.read())
 
                 cap = cv2.VideoCapture(input_path)
-                fps = cap.get(cv2.CAP_PROP_FPS)
+                fps = cap.get(cv2.CAP_PROP_FPS) or 24  # fallback fps
                 w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
                 h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
                 total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -63,6 +61,10 @@ if uploaded_file and style_option:
                 styled_path = os.path.join(tmpdir, "styled.mp4")
                 fourcc = cv2.VideoWriter_fourcc(*'mp4v')
                 styled_writer = cv2.VideoWriter(styled_path, fourcc, fps, (w, h))
+
+                if not styled_writer.isOpened():
+                    st.error("❌ Failed to create video writer. Check codec or resolution.")
+                    st.stop()
 
                 transform_fn = get_transform_function(style_option)
                 progress_bar = st.progress(0, text="Starting frame-by-frame processing...")
@@ -74,15 +76,19 @@ if uploaded_file and style_option:
                         break
                     styled = transform_fn(frame)
                     styled_writer.write(styled)
-
                     frame_count += 1
                     progress_bar.progress(min(frame_count / total_frames, 1.0),
-                                          text=f"{frame_count}/{total_frames} frames done")
+                                          text=f"{frame_count}/{total_frames} frames processed")
 
                 cap.release()
                 styled_writer.release()
 
-                # Create preview videos (360p, no audio)
+                # Check file size
+                if not os.path.exists(styled_path) or os.path.getsize(styled_path) < 1000:
+                    st.error("❌ Styled video generation failed. File is empty or corrupted.")
+                    st.stop()
+
+                # Preview generation
                 try:
                     preview_original_path = os.path.join(tmpdir, "preview_original.mp4")
                     preview_styled_path = os.path.join(tmpdir, "preview_styled.mp4")
