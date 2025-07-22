@@ -3,7 +3,7 @@ import os
 import tempfile
 import subprocess
 import time
-from moviepy.editor import VideoFileClip, clips_array
+from moviepy.editor import VideoFileClip
 from PIL import Image
 import numpy as np
 import cv2
@@ -18,9 +18,9 @@ def get_transform_function(style_name):
     if style_name == "🌸 Soft Pastel Anime-Like Style":
         def pastel_style(frame):
             r, g, b = frame[:, :, 0], frame[:, :, 1], frame[:, :, 2]
-            r = np.clip(r * 1.08 + 30, 0, 255)
-            g = np.clip(g * 1.06 + 20, 0, 255)
-            b = np.clip(b * 1.15 + 30, 0, 255)
+            r = np.clip(r * 1.08 + 20, 0, 255)
+            g = np.clip(g * 1.06 + 15, 0, 255)
+            b = np.clip(b * 1.15 + 25, 0, 255)
             blurred = (frame.astype(np.float32) * 0.4 +
                        cv2.GaussianBlur(frame, (7, 7), 0).astype(np.float32) * 0.6)
             tint = np.array([10, -5, 15], dtype=np.float32)
@@ -29,18 +29,13 @@ def get_transform_function(style_name):
 
     elif style_name == "🎮 Cinematic Warm Filter":
         def warm_style(frame):
-            r, g, b = frame[:, :, 0], frame[:, :, 1], frame[:, :, 2]
-            r = np.clip(r * 1.15 + 35, 0, 255)
-            g = np.clip(g * 1.08 + 20, 0, 255)
-            b = np.clip(b * 0.95, 10, 255)
-            rows, cols = r.shape
-            Y, X = np.ogrid[:rows, :cols]
-            center = (rows / 2, cols / 2)
-            vignette = 1 - ((X - center[1])**2 + (Y - center[0])**2) / (1.5 * center[0] * center[1])
-            vignette = np.clip(vignette, 0.3, 1)[..., np.newaxis]
-            result = np.stack([r, g, b], axis=2).astype(np.float32) * vignette
-            grain = np.random.normal(0, 3, frame.shape).astype(np.float32)
-            return np.clip(result + grain, 0, 255).astype(np.uint8)
+            frame = frame.astype(np.float32)
+            frame[:, :, 0] = np.clip(frame[:, :, 0] * 1.2 + 20, 0, 255)  # R
+            frame[:, :, 1] = np.clip(frame[:, :, 1] * 1.1 + 10, 0, 255)  # G
+            frame[:, :, 2] = np.clip(frame[:, :, 2] * 0.95, 0, 255)      # B
+            frame = np.clip(frame * 1.05 + 5, 0, 255)
+            noise = np.random.normal(0, 2, frame.shape).astype(np.float32)
+            return np.clip(frame + noise, 0, 255).astype(np.uint8)
         return warm_style
 
     return lambda frame: frame
@@ -73,15 +68,15 @@ def apply_watermark(input_path, output_path, text="@USMIKASHMIRI"):
     ]
     subprocess.run(cmd, check=True)
 
-# === UI ===
 st.markdown("---")
 st.header("🎨 Apply Style to Single Video")
 
 uploaded_file = st.file_uploader("📤 Upload a Video", type=["mp4"], key="style_upload")
-style = st.selectbox("🎨 Choose a Style", ["None", "🌸 Soft Pastel Anime-Like Style", "🎞️ Cinematic Warm Filter"])
+style = st.selectbox("🎨 Choose a Style", ["None", "🌸 Soft Pastel Anime-Like Style", "🎮 Cinematic Warm Filter"])
 add_watermark = st.checkbox("✅ Add Watermark (@USMIKASHMIRI)", value=False)
 rain_option = st.selectbox("🌧️ Add Rain Overlay", ["None", "🌧️ Light Rain (Default)", "🌦️ Extra Light Rain", "🌤️ Ultra Light Rain"])
 generate = st.button("🌸 Generate Styled Video")
+
 output_dir = "processed_videos"
 os.makedirs(output_dir, exist_ok=True)
 
@@ -92,11 +87,9 @@ if uploaded_file and generate:
         with open(input_path, "wb") as f:
             f.write(uploaded_file.read())
 
-        # Full and small clips
-        full_clip = VideoFileClip(input_path)
-        preview_clip = full_clip.resize(height=360)
-
+        clip = VideoFileClip(input_path)
         transform_fn = get_transform_function(style)
+
         rain_density = {
             "🌧️ Light Rain (Default)": 0.002,
             "🌦️ Extra Light Rain": 0.0008,
@@ -110,34 +103,43 @@ if uploaded_file and generate:
                 frame = add_rain_effect(frame, density=rain_density)
             return frame
 
-        # Styled clip
-        styled_clip = full_clip.fl_image(full_effect)
-        styled_temp = os.path.join(tmpdir, "styled.mp4")
-        styled_clip.write_videofile(styled_temp, codec="libx264", audio=False, preset="ultrafast", threads=4)
+        styled_clip = clip.fl_image(full_effect)
 
-        # Apply watermark if checked
+        styled_temp = os.path.join(tmpdir, "styled.mp4")
+        styled_clip.write_videofile(
+            styled_temp, codec="libx264", audio=False,
+            preset="ultrafast", threads=4
+        )
+
         final_path = styled_temp
         if add_watermark:
             watermarked_output = os.path.join(tmpdir, "styled_watermarked.mp4")
             apply_watermark(styled_temp, watermarked_output)
             final_path = watermarked_output
 
-        # Save high-res versions for download
-        final_original = os.path.join(output_dir, "original.mp4")
-        final_styled = os.path.join(output_dir, "styled.mp4")
-        full_clip.write_videofile(final_original, codec="libx264", audio=False, preset="ultrafast")
-        shutil.copy(final_path, final_styled)
+        # Save full-resolution download versions
+        original_save = os.path.join(output_dir, "original.mp4")
+        styled_save = os.path.join(output_dir, "styled.mp4")
+        shutil.copy(input_path, original_save)
+        shutil.copy(final_path, styled_save)
 
-        # Generate side-by-side preview (360p)
-        preview_styled = styled_clip.resize(height=360)
-        combined_preview = clips_array([[preview_clip, preview_styled]]).set_duration(min(preview_clip.duration, preview_styled.duration))
-        preview_output = os.path.join(output_dir, "side_by_side_preview.mp4")
-        combined_preview.write_videofile(preview_output, codec="libx264", audio=False, preset="ultrafast")
+        # Generate preview versions (small size)
+        preview_orig = os.path.join(tmpdir, "preview_orig.mp4")
+        preview_styled = os.path.join(tmpdir, "preview_styled.mp4")
+        clip.resize(height=200).write_videofile(preview_orig, codec="libx264", audio=False, preset="ultrafast")
+        VideoFileClip(final_path).resize(height=200).write_videofile(preview_styled, codec="libx264", audio=False, preset="ultrafast")
 
-        # Show preview
-        st.video(preview_output)
+        # Display side-by-side previews
+        col1, col2 = st.columns(2)
+        with col1:
+            st.subheader("🔍 Original Preview")
+            st.video(preview_orig)
+        with col2:
+            st.subheader("🎨 Styled Preview")
+            st.video(preview_styled)
 
-        # Downloads
-        st.download_button("⬇️ Download Original", open(final_original, "rb").read(), file_name="original.mp4")
-        st.download_button("⬇️ Download Styled", open(final_styled, "rb").read(), file_name="styled.mp4")
-        st.success(f"✅ Done in {time.time() - start_time:.2f} sec")
+        # Downloads (full quality)
+        st.download_button("⬇️ Download Original", open(original_save, "rb").read(), file_name="original.mp4")
+        st.download_button("⬇️ Download Styled", open(styled_save, "rb").read(), file_name="styled.mp4")
+
+        st.success(f"✅ Done in {time.time() - start_time:.2f} seconds")
