@@ -1,22 +1,13 @@
 import streamlit as st
 import os
 import tempfile
-import shutil
+import time
 import cv2
 import numpy as np
 from moviepy.editor import VideoFileClip
 from moviepy.video.io.ffmpeg_writer import FFMPEG_VideoWriter
-from moviepy.video.fx.resize import resize
 
-st.set_page_config(page_title="Video Style Filter", layout="centered")
-st.title("🎨 Video Style Filter")
-
-# Initialize session state
-if "original_path" not in st.session_state:
-    st.session_state.original_path = ""
-if "styled_path" not in st.session_state:
-    st.session_state.styled_path = ""
-
+# ---------- Style Filter Functions ----------
 def get_transform_function(style_name):
     if style_name == "🌸 Soft Pastel Anime-Like Style":
         def pastel_style(frame):
@@ -37,59 +28,79 @@ def get_transform_function(style_name):
             r = np.clip(r * 1.30 + 25, 0, 255)
             g = np.clip(g * 1.20 + 20, 0, 255)
             b = np.clip(b * 0.85, 0, 255)
-            result = np.stack([r, g, b], axis=2).astype(np.uint8)
-            return result
+            result = np.stack([r, g, b], axis=2).astype(np.float32)
+            grain = np.random.normal(0, 5, frame.shape).astype(np.float32)
+            return np.clip(result + grain, 0, 255).astype(np.uint8)
         return warm_style
 
     return lambda frame: frame
 
-style = st.selectbox("✨ Choose a Filter Style", ["🌸 Soft Pastel Anime-Like Style", "🎮 Cinematic Warm Filter"])
+# ---------- Streamlit UI ----------
+st.set_page_config(page_title="🎨 AI Video Styler", layout="centered")
+st.title("🎨 AI Video Styler")
+st.markdown("Upload a video and choose a style to apply. Preview the result side-by-side!")
 
-uploaded_file = st.file_uploader("📤 Upload a video", type=["mp4", "mov", "avi"])
+uploaded_file = st.file_uploader("📤 Upload Video", type=["mp4", "mov", "avi"])
+style_option = st.selectbox(
+    "🎨 Choose a Style",
+    ["🌸 Soft Pastel Anime-Like Style", "🎮 Cinematic Warm Filter"]
+)
 
-if uploaded_file:
-    tfile = tempfile.NamedTemporaryFile(delete=False)
-    tfile.write(uploaded_file.read())
-    st.session_state.original_path = tfile.name
-    st.video(st.session_state.original_path, format="video/mp4")
+if uploaded_file and style_option:
+    generate = st.button("🚀 Generate Styled Video")
 
-    if st.button("🎬 Apply Filter"):
-        with st.spinner("✨ Applying style, please wait..."):
-            transform_fn = get_transform_function(style)
+    if generate:
+        start_time = time.time()
 
+        with st.spinner("⏳ Processing..."):
             with tempfile.TemporaryDirectory() as tmpdir:
-                styled_path = os.path.join(tmpdir, "styled.mp4")
-                clip = VideoFileClip(st.session_state.original_path)
-                fps = clip.fps
-                w, h = clip.size
+                input_path = os.path.join(tmpdir, "input_video.mp4")
+                with open(input_path, "wb") as f:
+                    f.write(uploaded_file.read())
 
+                clip = VideoFileClip(input_path, audio=False)
+                w, h = clip.w, clip.h
+                fps = clip.fps
+
+                # Preview version of original
+                preview_original_path = os.path.join(tmpdir, "preview_original.mp4")
+                clip.resize(height=360).write_videofile(preview_original_path, codec="libx264", audio=False, verbose=False, logger=None)
+
+                styled_path = os.path.join(tmpdir, "styled.mp4")
+                transform_fn = get_transform_function(style_option)
                 writer = FFMPEG_VideoWriter(styled_path, (w, h), fps, codec="libx264")
 
-                total_frames = int(clip.fps * clip.duration)
-                for i, frame in enumerate(clip.iter_frames(dtype="uint8")):
+                total_frames = int(clip.duration * fps)
+                progress_bar = st.progress(0, text="Applying filter...")
+
+                for idx, frame in enumerate(clip.iter_frames(dtype="uint8")):
                     bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
                     styled = transform_fn(bgr)
                     rgb = cv2.cvtColor(styled, cv2.COLOR_BGR2RGB)
                     writer.write_frame(rgb)
-                    st.progress((i + 1) / total_frames)
+                    progress_bar.progress(min((idx + 1) / total_frames, 1.0), text=f"{idx + 1}/{total_frames} frames processed")
 
                 writer.close()
+                clip.reader.close()
+                clip.close()
 
-                st.session_state.styled_path = styled_path
-                preview_original = os.path.join(tmpdir, "preview_original.mp4")
-                preview_styled = os.path.join(tmpdir, "preview_styled.mp4")
+                # Preview version of styled
+                preview_styled_path = os.path.join(tmpdir, "preview_styled.mp4")
+                styled_clip = VideoFileClip(styled_path).resize(height=360)
+                styled_clip.write_videofile(preview_styled_path, codec="libx264", audio=False, verbose=False, logger=None)
+                styled_clip.close()
 
-                resize(clip, height=360).write_videofile(preview_original, codec="libx264", audio=False, verbose=False, logger=None)
-                resize(VideoFileClip(styled_path), height=360).write_videofile(preview_styled, codec="libx264", audio=False, verbose=False, logger=None)
+                st.success(f"✅ Done in {round(time.time() - start_time, 2)} seconds!")
 
+                st.markdown("### 🔍 Side-by-Side Preview (360p)")
                 col1, col2 = st.columns(2)
                 with col1:
-                    st.markdown("**Original Preview**")
-                    st.video(preview_original)
+                    st.video(preview_original_path)
+                    st.caption("📹 Original Preview")
                 with col2:
-                    st.markdown("**Styled Preview**")
-                    st.video(preview_styled)
+                    st.video(preview_styled_path)
+                    st.caption("🎨 Styled Preview")
 
-        st.success("✅ Filter applied successfully!")
-        with open(st.session_state.styled_path, "rb") as f:
-            st.download_button("⬇️ Download Styled Video", f, file_name="styled_video.mp4")
+                st.markdown("### ⬇️ Download Full Styled Video")
+                with open(styled_path, "rb") as f:
+                    st.download_button("Download Styled Video", f, file_name="styled_output.mp4", mime="video/mp4")
