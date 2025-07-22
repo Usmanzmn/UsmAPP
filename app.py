@@ -30,8 +30,8 @@ def get_transform_function(style_name):
     elif style_name == "🎮 Cinematic Warm Filter":
         def warm_style(frame):
             r, g, b = frame[:, :, 0], frame[:, :, 1], frame[:, :, 2]
-            r = np.clip(r * 1.15 + 25, 0, 255)
-            g = np.clip(g * 1.08 + 15, 0, 255)
+            r = np.clip(r * 1.15 + 35, 0, 255)
+            g = np.clip(g * 1.08 + 20, 0, 255)
             b = np.clip(b * 0.95, 10, 255)
             rows, cols = r.shape
             Y, X = np.ogrid[:rows, :cols]
