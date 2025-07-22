@@ -4,9 +4,9 @@ import tempfile
 import time
 import cv2
 import numpy as np
-from moviepy.editor import VideoFileClip
 from moviepy.video.io.ffmpeg_writer import FFMPEG_VideoWriter
 
+# Style Transform Functions
 def get_transform_function(style_name):
     if style_name == "🌸 Soft Pastel Anime-Like Style":
         def pastel_style(frame):
@@ -32,7 +32,29 @@ def get_transform_function(style_name):
 
     return lambda frame: frame
 
-# Streamlit UI
+# Resize video to 360p for preview using OpenCV
+def create_preview_video(input_path, output_path, height=360):
+    cap = cv2.VideoCapture(input_path)
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    scale = height / h
+    new_w = int(w * scale)
+
+    out = cv2.VideoWriter(output_path, fourcc, fps, (new_w, height))
+
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+        resized = cv2.resize(frame, (new_w, height))
+        out.write(resized)
+
+    cap.release()
+    out.release()
+
+# Streamlit App UI
 st.set_page_config(page_title="🎨 AI Video Styler", layout="centered")
 st.title("🎨 AI Video Styler")
 st.markdown("Upload a video and choose a style to apply. Preview the result side-by-side!")
@@ -64,7 +86,7 @@ if uploaded_file and style_option:
                 writer = FFMPEG_VideoWriter(styled_path, (w, h), fps, codec="libx264")
 
                 transform_fn = get_transform_function(style_option)
-                progress_bar = st.progress(0, text="Starting frame-by-frame processing...")
+                progress_bar = st.progress(0, text="Processing frames...")
 
                 frame_count = 0
                 while True:
@@ -73,7 +95,6 @@ if uploaded_file and style_option:
                         break
                     styled = transform_fn(frame)
                     writer.write_frame(cv2.cvtColor(styled, cv2.COLOR_BGR2RGB))
-
                     frame_count += 1
                     progress_bar.progress(min(frame_count / total_frames, 1.0),
                                           text=f"{frame_count}/{total_frames} frames done")
@@ -81,21 +102,15 @@ if uploaded_file and style_option:
                 cap.release()
                 writer.close()
 
-                # Create 360p previews without audio
+                # Create 360p previews using OpenCV (no audio)
                 preview_original_path = os.path.join(tmpdir, "preview_original.mp4")
                 preview_styled_path = os.path.join(tmpdir, "preview_styled.mp4")
-
-                VideoFileClip(input_path).resize(height=360).write_videofile(
-                    preview_original_path, codec="libx264", audio=False,
-                    verbose=False, logger=None
-                )
-                VideoFileClip(styled_path).resize(height=360).write_videofile(
-                    preview_styled_path, codec="libx264", audio=False,
-                    verbose=False, logger=None
-                )
+                create_preview_video(input_path, preview_original_path)
+                create_preview_video(styled_path, preview_styled_path)
 
                 st.success(f"✅ Done in {round(time.time() - start_time, 2)} seconds!")
                 st.markdown("### 🔍 Side-by-Side Preview (360p)")
+
                 col1, col2 = st.columns(2)
                 with col1:
                     st.video(preview_original_path)
