@@ -19,21 +19,24 @@ def get_transform_function(style_name):
         def pastel_style(frame):
             frame = frame.astype(np.float32)
 
-            # Pastel color boost
-            frame[:, :, 0] = np.clip(frame[:, :, 0] * 1.3 + 30, 0, 255)  # R
-            frame[:, :, 1] = np.clip(frame[:, :, 1] * 1.15 + 20, 0, 255) # G
-            frame[:, :, 2] = np.clip(frame[:, :, 2] * 1.25 + 25, 0, 255) # B
+            # Slightly stronger pastel color boost
+            r = np.clip(frame[:, :, 0] * 1.12 + 24, 0, 255)
+            g = np.clip(frame[:, :, 1] * 1.09 + 18, 0, 255)
+            b = np.clip(frame[:, :, 2] * 1.2 + 30, 0, 255)
 
-            # Contrast and brightness enhancement
-            frame = np.clip(frame * 1.1 + 10, 0, 255)
+            frame[:, :, 0] = r
+            frame[:, :, 1] = g
+            frame[:, :, 2] = b
 
-            # Slight sharpening
-            kernel = np.array([[0, -1, 0],
-                               [-1, 5.4, -1],
-                               [0, -1, 0]])
-            frame = cv2.filter2D(frame, -1, kernel)
+            # More pronounced soft blur blend
+            blurred = cv2.GaussianBlur(frame, (7, 7), 1)
+            blended = frame * 0.35 + blurred * 0.65
 
-            return np.clip(frame, 0, 255).astype(np.uint8)
+            # Warm pinkish tint (R+, G-, B+)
+            tint = np.array([15, -5, 18], dtype=np.float32)
+            result = np.clip(blended + tint, 0, 255)
+
+            return result.astype(np.uint8)
         return pastel_style
 
     elif style_name == "🎮 Cinematic Warm Filter":
