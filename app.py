@@ -18,9 +18,9 @@ def get_transform_function(style_name):
     if style_name == "🌸 Soft Pastel Anime-Like Style":
         def pastel_style(frame):
             r, g, b = frame[:, :, 0], frame[:, :, 1], frame[:, :, 2]
-            r = np.clip(r * 1.08 + 20, 0, 255)
-            g = np.clip(g * 1.06 + 15, 0, 255)
-            b = np.clip(b * 1.15 + 25, 0, 255)
+            r = np.clip(r * 1.08 + 30, 0, 255)
+            g = np.clip(g * 1.06 + 20, 0, 255)
+            b = np.clip(b * 1.15 + 30, 0, 255)
             blurred = (frame.astype(np.float32) * 0.4 +
                        cv2.GaussianBlur(frame, (7, 7), 0).astype(np.float32) * 0.6)
             tint = np.array([10, -5, 15], dtype=np.float32)
@@ -30,9 +30,9 @@ def get_transform_function(style_name):
     elif style_name == "🎮 Cinematic Warm Filter":
         def warm_style(frame):
             r, g, b = frame[:, :, 0], frame[:, :, 1], frame[:, :, 2]
-            r = np.clip(r * 1.15 + 15, 0, 255)
-            g = np.clip(g * 1.08 + 8, 0, 255)
-            b = np.clip(b * 0.95, 0, 255)
+            r = np.clip(r * 1.15 + 25, 0, 255)
+            g = np.clip(g * 1.08 + 15, 0, 255)
+            b = np.clip(b * 0.95, 10, 255)
             rows, cols = r.shape
             Y, X = np.ogrid[:rows, :cols]
             center = (rows / 2, cols / 2)
