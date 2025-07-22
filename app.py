@@ -120,8 +120,12 @@ if uploaded_file and generate:
 
         styled_temp = os.path.join(tmpdir, "styled.mp4")
         styled_clip.write_videofile(
-            styled_temp, codec="libx264", audio=False,
-            preset="ultrafast", threads=4
+            styled_temp,
+            codec="h264_nvenc",       # GPU acceleration
+            audio=False,
+            preset="p1",
+            ffmpeg_params=["-rc", "vbr", "-cq", "23"],
+            threads=0
         )
 
         final_path = styled_temp
@@ -137,8 +141,12 @@ if uploaded_file and generate:
 
         preview_orig = os.path.join(tmpdir, "preview_orig.mp4")
         preview_styled = os.path.join(tmpdir, "preview_styled.mp4")
-        clip.resize(height=200).write_videofile(preview_orig, codec="libx264", audio=False, preset="ultrafast")
-        VideoFileClip(final_path).resize(height=200).write_videofile(preview_styled, codec="libx264", audio=False, preset="ultrafast")
+        clip.resize(height=200).write_videofile(
+            preview_orig, codec="h264_nvenc", audio=False, preset="p1"
+        )
+        VideoFileClip(final_path).resize(height=200).write_videofile(
+            preview_styled, codec="h264_nvenc", audio=False, preset="p1"
+        )
 
         col1, col2 = st.columns(2)
         with col1:
