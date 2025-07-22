@@ -3,7 +3,7 @@ import os
 import tempfile
 import subprocess
 import time
-from moviepy.editor import VideoFileClip
+from moviepy.editor import VideoFileClip, clips_array
 from PIL import Image
 import numpy as np
 import cv2
@@ -73,7 +73,7 @@ def apply_watermark(input_path, output_path, text="@USMIKASHMIRI"):
     ]
     subprocess.run(cmd, check=True)
 
-# === Feature 1 UI ===
+# === UI ===
 st.markdown("---")
 st.header("🎨 Apply Style to Single Video")
 
@@ -92,13 +92,11 @@ if uploaded_file and generate:
         with open(input_path, "wb") as f:
             f.write(uploaded_file.read())
 
-        # Full resolution clip for final output
+        # Full and small clips
         full_clip = VideoFileClip(input_path)
-        # Smaller resolution clip for preview
         preview_clip = full_clip.resize(height=360)
 
         transform_fn = get_transform_function(style)
-
         rain_density = {
             "🌧️ Light Rain (Default)": 0.002,
             "🌦️ Extra Light Rain": 0.0008,
@@ -112,40 +110,34 @@ if uploaded_file and generate:
                 frame = add_rain_effect(frame, density=rain_density)
             return frame
 
+        # Styled clip
         styled_clip = full_clip.fl_image(full_effect)
-
         styled_temp = os.path.join(tmpdir, "styled.mp4")
-        styled_clip.write_videofile(
-            styled_temp,
-            codec="libx264",
-            audio=False,  # ✅ No audio in final output
-            preset="ultrafast",
-            threads=4
-        )
+        styled_clip.write_videofile(styled_temp, codec="libx264", audio=False, preset="ultrafast", threads=4)
 
+        # Apply watermark if checked
         final_path = styled_temp
         if add_watermark:
             watermarked_output = os.path.join(tmpdir, "styled_watermarked.mp4")
             apply_watermark(styled_temp, watermarked_output)
             final_path = watermarked_output
 
-        # Previews (no audio, resized)
-        preview_original = os.path.join(output_dir, "original_preview.mp4")
-        preview_styled = os.path.join(output_dir, "styled_preview.mp4")
-        preview_clip.write_videofile(preview_original, codec="libx264", audio=False, preset="ultrafast")
-        VideoFileClip(final_path).resize(height=360).write_videofile(preview_styled, codec="libx264", audio=False, preset="ultrafast")
-
-        # Save high-res downloadables (no audio)
+        # Save high-res versions for download
         final_original = os.path.join(output_dir, "original.mp4")
         final_styled = os.path.join(output_dir, "styled.mp4")
         full_clip.write_videofile(final_original, codec="libx264", audio=False, preset="ultrafast")
         shutil.copy(final_path, final_styled)
 
-        # Display
-        st.video(preview_original)
+        # Generate side-by-side preview (360p)
+        preview_styled = styled_clip.resize(height=360)
+        combined_preview = clips_array([[preview_clip, preview_styled]]).set_duration(min(preview_clip.duration, preview_styled.duration))
+        preview_output = os.path.join(output_dir, "side_by_side_preview.mp4")
+        combined_preview.write_videofile(preview_output, codec="libx264", audio=False, preset="ultrafast")
+
+        # Show preview
+        st.video(preview_output)
+
+        # Downloads
         st.download_button("⬇️ Download Original", open(final_original, "rb").read(), file_name="original.mp4")
-
-        st.video(preview_styled)
         st.download_button("⬇️ Download Styled", open(final_styled, "rb").read(), file_name="styled.mp4")
-
         st.success(f"✅ Done in {time.time() - start_time:.2f} sec")
