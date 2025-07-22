@@ -7,7 +7,6 @@ import numpy as np
 from moviepy.editor import VideoFileClip
 from moviepy.video.io.ffmpeg_writer import FFMPEG_VideoWriter
 
-# ---------- Style Filter Functions ----------
 def get_transform_function(style_name):
     if style_name == "🌸 Soft Pastel Anime-Like Style":
         def pastel_style(frame):
@@ -33,7 +32,7 @@ def get_transform_function(style_name):
 
     return lambda frame: frame
 
-# ---------- Streamlit UI ----------
+# Streamlit UI
 st.set_page_config(page_title="🎨 AI Video Styler", layout="centered")
 st.title("🎨 AI Video Styler")
 st.markdown("Upload a video and choose a style to apply. Preview the result side-by-side!")
@@ -55,63 +54,56 @@ if uploaded_file and style_option:
                 with open(input_path, "wb") as f:
                     f.write(uploaded_file.read())
 
-                clip = VideoFileClip(input_path, audio=False)
-                w, h = clip.w, clip.h
-                fps = clip.fps
-                total_frames = int(clip.duration * fps)
+                # OpenCV Fast Processing
+                cap = cv2.VideoCapture(input_path)
+                fps = cap.get(cv2.CAP_PROP_FPS)
+                w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
+                styled_path = os.path.join(tmpdir, "styled.mp4")
+                writer = FFMPEG_VideoWriter(styled_path, (w, h), fps, codec="libx264")
+
+                transform_fn = get_transform_function(style_option)
+                progress_bar = st.progress(0, text="Starting frame-by-frame processing...")
+
+                frame_count = 0
+                while True:
+                    ret, frame = cap.read()
+                    if not ret:
+                        break
+                    styled = transform_fn(frame)
+                    writer.write_frame(cv2.cvtColor(styled, cv2.COLOR_BGR2RGB))
+
+                    frame_count += 1
+                    progress_bar.progress(min(frame_count / total_frames, 1.0),
+                                          text=f"{frame_count}/{total_frames} frames done")
+
+                cap.release()
+                writer.close()
+
+                # Generate preview using moviepy at 360p
                 preview_original_path = os.path.join(tmpdir, "preview_original.mp4")
-                clip.resize(height=360).write_videofile(
+                preview_styled_path = os.path.join(tmpdir, "preview_styled.mp4")
+
+                VideoFileClip(input_path).resize(height=360).write_videofile(
                     preview_original_path, codec="libx264", audio=False,
                     verbose=False, logger=None
                 )
-
-                styled_path = os.path.join(tmpdir, "styled.mp4")
-                transform_fn = get_transform_function(style_option)
-                writer = FFMPEG_VideoWriter(styled_path, (w, h), fps, codec="libx264")
-
-                progress_bar = st.progress(0, text="Applying filter...")
-
-                try:
-                    for idx, frame in enumerate(clip.iter_frames(dtype="uint8")):
-                        bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-                        styled = transform_fn(bgr)
-                        rgb = cv2.cvtColor(styled, cv2.COLOR_BGR2RGB)
-                        writer.write_frame(rgb)
-                        progress = (idx + 1) / total_frames
-                        progress_bar.progress(progress, text=f"{idx + 1}/{total_frames} frames processed")
-
-                except Exception as e:
-                    st.error(f"❌ Frame processing error: {str(e)}")
-                    writer.close()
-                    clip.close()
-                    raise
-
-                writer.close()
-                clip.reader.close()
-                clip.close()
-
-                # Ensure file is written before using it
-                time.sleep(1)
-
-                preview_styled_path = os.path.join(tmpdir, "preview_styled.mp4")
-                styled_clip = VideoFileClip(styled_path).resize(height=360)
-                styled_clip.write_videofile(
+                VideoFileClip(styled_path).resize(height=360).write_videofile(
                     preview_styled_path, codec="libx264", audio=False,
                     verbose=False, logger=None
                 )
-                styled_clip.close()
 
                 st.success(f"✅ Done in {round(time.time() - start_time, 2)} seconds!")
-
                 st.markdown("### 🔍 Side-by-Side Preview (360p)")
                 col1, col2 = st.columns(2)
                 with col1:
                     st.video(preview_original_path)
-                    st.caption("📹 Original Preview")
+                    st.caption("📹 Original")
                 with col2:
                     st.video(preview_styled_path)
-                    st.caption("🎨 Styled Preview")
+                    st.caption("🎨 Styled")
 
                 st.markdown("### ⬇️ Download Full Styled Video")
                 with open(styled_path, "rb") as f:
