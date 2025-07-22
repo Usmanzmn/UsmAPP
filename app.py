@@ -16,16 +16,23 @@ st.title("🎨 AI Video Effects App")
 @st.cache_resource
 def get_transform_function(style_name):
     if style_name == "🌸 Soft Pastel Anime-Like Style":
-        def pastel_style(frame):
-            r, g, b = frame[:, :, 0], frame[:, :, 1], frame[:, :, 2]
-            r = np.clip(r * 1.08 + 20, 0, 255)
-            g = np.clip(g * 1.06 + 15, 0, 255)
-            b = np.clip(b * 1.15 + 25, 0, 255)
-            blurred = (frame.astype(np.float32) * 0.4 +
-                       cv2.GaussianBlur(frame, (7, 7), 0).astype(np.float32) * 0.6)
-            tint = np.array([10, -5, 15], dtype=np.float32)
-            return np.clip(blurred + tint, 0, 255).astype(np.uint8)
-        return pastel_style
+        frame = frame.astype(np.float32)
+            # Pastel color boost
+        frame[:, :, 0] = np.clip(frame[:, :, 0] * 1.3 + 30, 0, 255)  # R
+        frame[:, :, 1] = np.clip(frame[:, :, 1] * 1.15 + 20, 0, 255) # G
+        frame[:, :, 2] = np.clip(frame[:, :, 2] * 1.25 + 25, 0, 255) # B
+
+        # Contrast and brightness enhancement
+        frame = np.clip(frame * 1.1 + 10, 0, 255)
+
+        # Slight sharpening
+        kernel = np.array([[0, -1, 0],
+                           [-1, 5.4, -1],
+                           [0, -1, 0]])
+        frame = cv2.filter2D(frame, -1, kernel)
+
+        return np.clip(frame, 0, 255).astype(np.uint8)
+    return pastel_style
 
     elif style_name == "🎮 Cinematic Warm Filter":
         def warm_style(frame):
