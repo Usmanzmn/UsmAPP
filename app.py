@@ -28,9 +28,7 @@ def get_transform_function(style_name):
             r = np.clip(r * 1.30 + 25, 0, 255)
             g = np.clip(g * 1.20 + 20, 0, 255)
             b = np.clip(b * 0.85, 0, 255)
-            result = np.stack([r, g, b], axis=2).astype(np.float32)
-            grain = np.random.normal(0, 5, frame.shape).astype(np.float32)
-            return np.clip(result + grain, 0, 255).astype(np.uint8)
+            return np.stack([r, g, b], axis=2).astype(np.uint8)
         return warm_style
 
     return lambda frame: frame
@@ -41,10 +39,9 @@ st.title("🎨 AI Video Styler")
 st.markdown("Upload a video and choose a style to apply. Preview the result side-by-side!")
 
 uploaded_file = st.file_uploader("📤 Upload Video", type=["mp4", "mov", "avi"])
-style_option = st.selectbox(
-    "🎨 Choose a Style",
-    ["🌸 Soft Pastel Anime-Like Style", "🎮 Cinematic Warm Filter"]
-)
+style_option = st.selectbox("🎨 Choose a Style", [
+    "🌸 Soft Pastel Anime-Like Style", "🎮 Cinematic Warm Filter"
+])
 
 if uploaded_file and style_option:
     generate = st.button("🚀 Generate Styled Video")
@@ -52,7 +49,7 @@ if uploaded_file and style_option:
     if generate:
         start_time = time.time()
 
-        with st.spinner("⏳ Processing..."):
+        with st.spinner("⏳ Processing... Please wait."):
             with tempfile.TemporaryDirectory() as tmpdir:
                 input_path = os.path.join(tmpdir, "input_video.mp4")
                 with open(input_path, "wb") as f:
@@ -61,33 +58,48 @@ if uploaded_file and style_option:
                 clip = VideoFileClip(input_path, audio=False)
                 w, h = clip.w, clip.h
                 fps = clip.fps
+                total_frames = int(clip.duration * fps)
 
-                # Preview version of original
                 preview_original_path = os.path.join(tmpdir, "preview_original.mp4")
-                clip.resize(height=360).write_videofile(preview_original_path, codec="libx264", audio=False, verbose=False, logger=None)
+                clip.resize(height=360).write_videofile(
+                    preview_original_path, codec="libx264", audio=False,
+                    verbose=False, logger=None
+                )
 
                 styled_path = os.path.join(tmpdir, "styled.mp4")
                 transform_fn = get_transform_function(style_option)
                 writer = FFMPEG_VideoWriter(styled_path, (w, h), fps, codec="libx264")
 
-                total_frames = int(clip.duration * fps)
                 progress_bar = st.progress(0, text="Applying filter...")
 
-                for idx, frame in enumerate(clip.iter_frames(dtype="uint8")):
-                    bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-                    styled = transform_fn(bgr)
-                    rgb = cv2.cvtColor(styled, cv2.COLOR_BGR2RGB)
-                    writer.write_frame(rgb)
-                    progress_bar.progress(min((idx + 1) / total_frames, 1.0), text=f"{idx + 1}/{total_frames} frames processed")
+                try:
+                    for idx, frame in enumerate(clip.iter_frames(dtype="uint8")):
+                        bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+                        styled = transform_fn(bgr)
+                        rgb = cv2.cvtColor(styled, cv2.COLOR_BGR2RGB)
+                        writer.write_frame(rgb)
+                        progress = (idx + 1) / total_frames
+                        progress_bar.progress(progress, text=f"{idx + 1}/{total_frames} frames processed")
+
+                except Exception as e:
+                    st.error(f"❌ Frame processing error: {str(e)}")
+                    writer.close()
+                    clip.close()
+                    raise
 
                 writer.close()
                 clip.reader.close()
                 clip.close()
 
-                # Preview version of styled
+                # Ensure file is written before using it
+                time.sleep(1)
+
                 preview_styled_path = os.path.join(tmpdir, "preview_styled.mp4")
                 styled_clip = VideoFileClip(styled_path).resize(height=360)
-                styled_clip.write_videofile(preview_styled_path, codec="libx264", audio=False, verbose=False, logger=None)
+                styled_clip.write_videofile(
+                    preview_styled_path, codec="libx264", audio=False,
+                    verbose=False, logger=None
+                )
                 styled_clip.close()
 
                 st.success(f"✅ Done in {round(time.time() - start_time, 2)} seconds!")
