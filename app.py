@@ -58,6 +58,7 @@ if uploaded_file and generate:
         with open(input_path, "wb") as f:
             f.write(uploaded_file.read())
 
+        # Reload clip after writing to ensure it’s fresh
         clip = VideoFileClip(input_path, audio=False)
         fps = clip.fps
         w, h = clip.size
@@ -66,18 +67,20 @@ if uploaded_file and generate:
         styled_path = os.path.join(tmpdir, "styled.mp4")
         writer = FFMPEG_VideoWriter(styled_path, (w, h), fps, codec="libx264")
 
-        for frame in clip.iter_frames(dtype="uint8", progress_bar=True):
+        for frame in clip.iter_frames(fps=fps, dtype="uint8", progress_bar=True):
             bgr = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
             styled = transform_fn(bgr)
             rgb = cv2.cvtColor(styled, cv2.COLOR_BGR2RGB)
             writer.write_frame(rgb)
         writer.close()
+        clip.reader.close()
+        clip.close()
 
         # Create 360p previews
         preview_original = os.path.join(tmpdir, "preview_original.mp4")
         preview_styled = os.path.join(tmpdir, "preview_styled.mp4")
-        clip.resize(height=360).write_videofile(preview_original, codec="libx264", audio=False, verbose=False, logger=None)
-        VideoFileClip(styled_path).resize(height=360).write_videofile(preview_styled, codec="libx264", audio=False, verbose=False, logger=None)
+        VideoFileClip(input_path, audio=False).resize(height=360).write_videofile(preview_original, codec="libx264", audio=False, verbose=False, logger=None)
+        VideoFileClip(styled_path, audio=False).resize(height=360).write_videofile(preview_styled, codec="libx264", audio=False, verbose=False, logger=None)
 
         # Move final outputs
         final_original = os.path.join(output_dir, "original.mp4")
