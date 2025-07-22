@@ -108,7 +108,10 @@ if uploaded_file and generate:
         st.session_state["process_time"] = time.time() - start_time
 
 # ========== Result Display ==========
-if "styled_output_path" in st.session_state:
+if (
+    "styled_output_path" in st.session_state
+    and "original_path" in st.session_state
+):
     col1, col2 = st.columns(2)
     with col1:
         st.subheader("🔹 Original (360p)")
